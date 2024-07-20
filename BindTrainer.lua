@@ -162,23 +162,33 @@ function BindTrainer:PlaySound(correct)
     end
 end
 
--- Shake animation function
+-- Ďalšia oprava funkcie ShakeIcon
 function BindTrainer:ShakeIcon()
     Debug("ShakeIcon called")
-    local shakeTime, shakeX, shakeY = 0.5, 10, 10
-    local origX, origY = self.spellIcon:GetPoint()
+    local shakeTime, shakeX, shakeY = 0.5, 5, 5
+    local origX, origY = self:GetCenter()
     local shakes = 8
     local shakeDuration = shakeTime / shakes
-    for i = 1, shakes do
+    local parent = self:GetParent()
+    
+    local function DoShake(i)
+        if i > shakes then
+            self:ClearAllPoints()
+            self:SetPoint("CENTER", parent, "BOTTOMLEFT", origX, origY)
+            return
+        end
+        
         local offsetX = math.random(-shakeX, shakeX)
         local offsetY = math.random(-shakeY, shakeY)
-        self.spellIcon:SetPoint("CENTER", self, "CENTER", offsetX, offsetY)
-        C_Timer.After(i * shakeDuration, function()
-            if i == shakes then
-                self.spellIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
-            end
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", parent, "BOTTOMLEFT", origX + offsetX, origY + offsetY)
+        
+        C_Timer.After(shakeDuration, function()
+            DoShake(i + 1)
         end)
     end
+    
+    DoShake(1)
 end
 
 -- Check answer
