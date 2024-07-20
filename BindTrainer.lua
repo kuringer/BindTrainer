@@ -37,6 +37,8 @@ local function Debug(format, ...)
             args[i] = "nil"
         elseif type(args[i]) == "boolean" then
             args[i] = args[i] and "true" or "false"
+        elseif type(args[i]) == "table" then
+            args[i] = "table: " .. tostring(args[i])
         end
     end
     print(string.format("|cFF00FF00BindTrainer Debug:|r " .. format, unpack(args)))
@@ -150,14 +152,71 @@ function BindTrainer:ShowFlashcard()
     self:Show()
 end
 
+-- Play sound function
+function BindTrainer:PlaySound(correct)
+    Debug("PlaySound called with correct=%s", tostring(correct))
+    if correct then
+        PlaySound(SOUNDKIT.UI_EPICLOOT_TOAST)
+    else
+        PlaySound(SOUNDKIT.UI_BATTLEGROUND_COUNTDOWN_FINISHED)
+    end
+end
+
+-- Shake animation function
+function BindTrainer:ShakeIcon()
+    Debug("ShakeIcon called")
+    local shakeTime, shakeX, shakeY = 0.5, 10, 10
+    local origX, origY = self.spellIcon:GetPoint()
+    local shakes = 8
+    local shakeDuration = shakeTime / shakes
+    for i = 1, shakes do
+        local offsetX = math.random(-shakeX, shakeX)
+        local offsetY = math.random(-shakeY, shakeY)
+        self.spellIcon:SetPoint("CENTER", self, "CENTER", offsetX, offsetY)
+        C_Timer.After(i * shakeDuration, function()
+            if i == shakes then
+                self.spellIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
+            end
+        end)
+    end
+end
+
 -- Check answer
 function BindTrainer:CheckAnswer(actionType, actionId)
+    Debug("CheckAnswer called with actionType=%s, actionId=%s", tostring(actionType), tostring(actionId))
+    
     local card = self.flashcards[self.currentCard]
+    if not card then
+        Debug("Error: No card found at index %d", self.currentCard)
+        return
+    end
+
+    Debug("Current card: %s", tostring(card))
+
     if card.type == actionType and card.id == actionId then
-        print(string.format("Correct! You used the right action: %s", card.spell))
+        print(string.format("Correct! You used the right action: %s", card.spell or "Unknown"))
+        if self.PlaySound then
+            self:PlaySound(true)
+        else
+            Debug("Warning: PlaySound method not found")
+        end
         self:NextFlashcard()
     else
-        print(string.format("Incorrect. Expected %s, but got %s with ID %s", card.spell, actionType, tostring(actionId)))
+        local expectedAction = card.spell or "Unknown"
+        local gotAction = actionType or "Unknown"
+        local gotId = tostring(actionId) or "Unknown"
+        
+        print(string.format("Incorrect. Expected %s, but got %s with ID %s", expectedAction, gotAction, gotId))
+        if self.PlaySound then
+            self:PlaySound(false)
+        else
+            Debug("Warning: PlaySound method not found")
+        end
+        if self.ShakeIcon then
+            self:ShakeIcon()
+        else
+            Debug("Warning: ShakeIcon method not found")
+        end
     end
 end
 
@@ -170,8 +229,8 @@ end
 
 -- Initialize
 BindTrainer:SetScript("OnEvent", function(self, event)
+    Debug("Event triggered: %s", event)
     if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
-        Debug("Event triggered:", event)
         self:PopulateFlashcards()
         print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end.", #self.flashcards))
     end
@@ -180,6 +239,7 @@ end)
 -- Hook spell cast
 hooksecurefunc("UseAction", function(slot, checkCursor, onSelf)
     local actionType, id = GetActionInfo(slot)
+    Debug("UseAction hook called with slot=%s, actionType=%s, id=%s", tostring(slot), tostring(actionType), tostring(id))
     if BindTrainer:IsShown() then
         BindTrainer:CheckAnswer(actionType, id)
     end
@@ -196,5 +256,3 @@ SlashCmdList["BINDTRAINEREND"] = function()
     BindTrainer:Hide()
     print("Bind training ended.")
 end
-
-
