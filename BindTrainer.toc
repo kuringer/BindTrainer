@@ -1,0 +1,7 @@
+## Interface: 100005
+## Title: Bind Trainer
+## Notes: Train your keybinds with interactive flashcards
+## Author: YourName
+## Version: 0.2
+
+BindTrainer.lua
