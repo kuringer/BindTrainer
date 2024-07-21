@@ -36,10 +36,10 @@ BindTrainer.skipButton:SetScript("OnClick", function()
     BindTrainer:NextFlashcard()
 end)
 
--- Improved Debug function
-local function Debug(format, ...)
+-- Globálna debug funkcia
+local function Debug(message)
     if BindTrainer.debugMode then
-        print(string.format("|cFF00FF00BindTrainer Debug:|r " .. format, ...))
+        print("|cFF00FF00BindTrainer Debug:|r " .. message)
     end
 end
 
@@ -247,8 +247,6 @@ end
 
 -- Upravená funkcia NextFlashcard
 function BindTrainer:NextFlashcard()
-    if not self.isSessionActive or not self.currentSession then return end
-
     self:CheckFlashcardsIntegrity()
     if #self.flashcards == 0 then
         print("|cFFFF0000BindTrainer Error:|r Žiadne platné flashcardy. Ukončujem reláciu...")
@@ -256,22 +254,44 @@ function BindTrainer:NextFlashcard()
         return
     end
 
+    if not self.currentSession then
+        print("|cFFFF0000BindTrainer Error:|r Žiadna aktívna relácia. Začínam novú...")
+        self:StartSession()
+        return
+    end
+
     -- Kontrola, či sme už prešli všetky flashcardy
-    if #self.currentSession.unseenFlashcards == 0 then
+    if #self.currentSession.seenFlashcards >= #self.flashcards then
         print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
         self:EndSession()
         return
     end
 
-    -- Výber náhodného nevidenéh flashcardu
-    local randomIndex = math.random(1, #self.currentSession.unseenFlashcards)
-    self.currentCard = table.remove(self.currentSession.unseenFlashcards, randomIndex)
-    
-    local newCard = self.flashcards[self.currentCard]
-    self.currentSession.seenFlashcards[newCard.spell] = true
+    -- Vytvorenie zoznamu nevidených flashcardov
+    if not self.currentSession.unseenFlashcards then
+        self.currentSession.unseenFlashcards = {}
+        for i, card in ipairs(self.flashcards) do
+            if not self.currentSession.seenFlashcards[card.spell] then
+                table.insert(self.currentSession.unseenFlashcards, i)
+            end
+        end
+    end
 
-    print(string.format("Vybraný flashcard: %d - %s (Celkovo zobrazené: %d/%d)", 
-        self.currentCard, newCard.spell, #self.currentSession.seenFlashcards, self.currentSession.totalFlashcards))
+    -- Výber náhodného nevidenéh flashcardu
+    if #self.currentSession.unseenFlashcards > 0 then
+        local randomIndex = math.random(1, #self.currentSession.unseenFlashcards)
+        self.currentCard = table.remove(self.currentSession.unseenFlashcards, randomIndex)
+        
+        local newCard = self.flashcards[self.currentCard]
+        self.currentSession.seenFlashcards[newCard.spell] = true
+
+        Debug(string.format("Vybraný flashcard: %s (Zobrazené: %d/%d)", 
+            newCard.spell, #self.currentSession.seenFlashcards, self.currentSession.totalFlashcards))
+    else
+        print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
+        self:EndSession()
+        return
+    end
 
     self:ShowFlashcard()
 end
@@ -292,8 +312,7 @@ function BindTrainer:StartSession()
     end
 
     self:PopulateFlashcards()
-    print("Počiatočný zoznam všetkých dostupných flashcardov:")
-    self:PrintSpellList()
+    Debug("Počiatočný počet flashcardov: " .. #self.flashcards)
 
     self.currentSession = {
         startTime = nil,
@@ -303,17 +322,14 @@ function BindTrainer:StartSession()
         skips = 0,
         totalFlashcards = #self.flashcards,
         seenFlashcards = {},
-        unseenFlashcards = nil,
+        unseenFlashcards = {},
     }
 
-    print(string.format("Začínam novú reláciu s %d flashcardmi!", self.currentSession.totalFlashcards))
-    print("Flashcardy budú zobrazované v náhodnom poradí.")
-
-    -- Inicializujeme unseenFlashcards
-    self.currentSession.unseenFlashcards = {}
     for i = 1, #self.flashcards do
         table.insert(self.currentSession.unseenFlashcards, i)
     end
+
+    print(string.format("Začínam novú reláciu s %d flashcardmi.", self.currentSession.totalFlashcards))
 
     -- Odpočítavanie
     local countdown = 3
@@ -330,12 +346,12 @@ function BindTrainer:StartSession()
         else
             self.countdownFrame:Hide()
             print("Relácia začala!")
-            self:Show()  -- Zobrazenie hlavnej ikony
-            self.skipButton:Show()  -- Zobrazenie tlačidla Skip
-            self.isSessionActive = true  -- Nastavenie relácie ako aktívnej
-            self.currentSession.startTime = GetTime()  -- Nastavenie času začiatku relácie
+            self:Show()
+            self.skipButton:Show()
+            self.isSessionActive = true
+            self.currentSession.startTime = GetTime()
             self:UpdateSessionTimer()
-            self:NextFlashcard()  -- Volanie NextFlashcard až po dokončení odpočítavania
+            self:NextFlashcard()
         end
     end
     DoCountdown()
@@ -344,7 +360,7 @@ end
 -- New function to end a session
 function BindTrainer:EndSession()
     if not self.currentSession then
-        print("No active session.")
+        print("Žiadna aktívna relácia.")
         return
     end
 
@@ -354,51 +370,19 @@ function BindTrainer:EndSession()
     local duration = self.currentSession.endTime - self.currentSession.startTime
     local apm = self.currentSession.totalActions / (duration / 60)
 
-    print("Relácia skončila!")
+    print("\nRelácia skončila!")
     print(string.format("Celkový čas: %.2f sekúnd", duration))
     print(string.format("Akcií za minútu: %.2f", apm))
     print(string.format("Počet chýb: %d", self.currentSession.mistakes))
     print(string.format("Počet preskočených: %d", self.currentSession.skips))
     print(string.format("Celkový počet flashcardov: %d", self.currentSession.totalFlashcards))
-    print(string.format("Počet unikátnych flashcardov: %d", #self.currentSession.seenFlashcards))
 
-    -- Pridajte toto na koniec funkcie EndSession
-    self:DebugFlashcardDisplayCount()
-
-    -- Save session to history
-    table.insert(self.sessionHistory, {
-        date = date("%Y-%m-%d %H:%M:%S"),
-        duration = duration,
-        mistakes = self.currentSession.mistakes,
-        apm = apm,
-        skips = self.currentSession.skips,  -- Add skip count to history
-        totalFlashcards = self.currentSession.totalFlashcards  -- Add total flashcards count to history
-    })
-    self:SaveSessionHistory()
-    Debug("Added new session to history. Total sessions: " .. #self.sessionHistory)
-
-    -- Hide the main icon and relevant elements
+    -- Skrytie hlavnej ikony a relevantných elementov
     self:Hide()
     self.skipButton:Hide()
-    -- If you have any other visible elements, hide them here
 
-    -- Ask user if they want to start a new session
-    StaticPopupDialogs["BINDTRAINER_NEW_SESSION"] = {
-        text = "Do you want to start a new session?",
-        button1 = "Yes",
-        button2 = "No",
-        OnAccept = function()
-            self:StartSession()
-        end,
-        OnCancel = function()
-            -- No need to hide anything, as we've already hidden them above
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-    }
-    StaticPopup_Show("BINDTRAINER_NEW_SESSION")
-
+    -- Uloženie relácie do histórie a resetovanie aktuálnej relácie
+    self:SaveSessionToHistory()
     self.currentSession = nil
 end
 
@@ -407,7 +391,7 @@ function BindTrainer:UpdateSessionTimer()
     if not self.currentSession then return end
 
     local elapsed = GetTime() - self.currentSession.startTime
-    print(string.format("Čas relácie: %.2f sekúnd", elapsed))
+    Debug(string.format("Čas relácie: %.2f sekúnd", elapsed))
 
     C_Timer.After(1, function() self:UpdateSessionTimer() end)
 end
@@ -594,4 +578,18 @@ function BindTrainer:PrintSpellList()
     for i, card in ipairs(self.flashcards) do
         print(string.format("%d. %s (Slot: %d, Type: %s, ID: %s)", i, card.spell, card.slot, card.type, tostring(card.id)))
     end
+end
+
+-- Funkcia na uloženie relácie do histórie
+function BindTrainer:SaveSessionToHistory()
+    local session = self.currentSession
+    table.insert(self.sessionHistory, {
+        date = date("%Y-%m-%d %H:%M:%S"),
+        duration = session.endTime - session.startTime,
+        mistakes = session.mistakes,
+        apm = session.totalActions / ((session.endTime - session.startTime) / 60),
+        skips = session.skips,
+        totalFlashcards = session.totalFlashcards
+    })
+    Debug("Relácia uložená do histórie. Celkový počet relácií: " .. #self.sessionHistory)
 end
