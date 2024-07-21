@@ -351,6 +351,7 @@ function BindTrainer:EndSession()
         mistakes = self.currentSession.mistakes,
         apm = apm
     })
+    Debug("Pridaná nová session do histórie. Celkový počet: " .. #self.sessionHistory)
 
     -- Ask user if they want to start a new session
     StaticPopupDialogs["BINDTRAINER_NEW_SESSION"] = {
@@ -384,11 +385,25 @@ end
 
 -- New function to show session history
 function BindTrainer:ShowSessionHistory()
-    print("Session history:")
-    for i, session in ipairs(self.sessionHistory) do
-        print(string.format("%d. %s - Duration: %.2fs, APM: %.2f, Mistakes: %d", 
-            i, session.date, session.duration, session.apm, session.mistakes))
+    Debug("Zobrazujem históriu sessions. Počet záznamov: " .. #self.sessionHistory)
+    BindTrainer.historyFrame:Show()
+    
+    -- Clear existing content
+    for _, child in pairs({BindTrainer.historyContent:GetChildren()}) do
+        child:Hide()
     end
+    
+    local yOffset = 0
+    for i, session in ipairs(self.sessionHistory) do
+        local sessionText = BindTrainer.historyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        sessionText:SetPoint("TOPLEFT", 0, -yOffset)
+        sessionText:SetText(string.format("%d. %s\nDuration: %.2fs, APM: %.2f, Mistakes: %d", 
+            i, session.date, session.duration, session.apm, session.mistakes))
+        yOffset = yOffset + 40
+        Debug("Pridaný záznam do histórie: " .. i)
+    end
+    
+    BindTrainer.historyContent:SetHeight(yOffset)
 end
 
 -- Initialize
@@ -431,8 +446,10 @@ function BindTrainer:OnAddonLoaded(addonName)
     
     if BindTrainerSavedVariables then
         self.sessionHistory = BindTrainerSavedVariables.sessionHistory or {}
+        Debug("Načítaná história sessions: " .. #self.sessionHistory)
     else
         BindTrainerSavedVariables = {sessionHistory = {}}
+        Debug("Vytvorená nová história sessions")
     end
 end
 
@@ -442,8 +459,9 @@ BindTrainer:SetScript("OnEvent", function(self, event, ...)
         self:OnAddonLoaded(...)
     elseif event == "PLAYER_LOGOUT" then
         BindTrainerSavedVariables.sessionHistory = self.sessionHistory
+        Debug("Uložená história sessions: " .. #self.sessionHistory)
     else
-        -- Existujúca logika pre iné eventy
+        -- Existing logic for other events
         if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
             self:PopulateFlashcards()
             print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
@@ -457,7 +475,7 @@ SlashCmdList["BINDTRAINERRESTART"] = function()
     BindTrainer:RestartTraining()
 end
 
--- Vytvorenie frame pre odpočítavanie
+-- Create frame for countdown
 BindTrainer.countdownFrame = CreateFrame("Frame", nil, UIParent)
 BindTrainer.countdownFrame:SetSize(200, 100)
 BindTrainer.countdownFrame:SetPoint("CENTER")
@@ -466,3 +484,27 @@ BindTrainer.countdownFrame:Hide()
 BindTrainer.countdownText = BindTrainer.countdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
 BindTrainer.countdownText:SetPoint("CENTER")
 BindTrainer.countdownText:SetText("")
+
+-- Create frame for history
+BindTrainer.historyFrame = CreateFrame("Frame", "BindTrainerHistoryFrame", UIParent, "BasicFrameTemplateWithInset")
+BindTrainer.historyFrame:SetSize(400, 300)
+BindTrainer.historyFrame:SetPoint("CENTER")
+BindTrainer.historyFrame:SetMovable(true)
+BindTrainer.historyFrame:EnableMouse(true)
+BindTrainer.historyFrame:RegisterForDrag("LeftButton")
+BindTrainer.historyFrame:SetScript("OnDragStart", BindTrainer.historyFrame.StartMoving)
+BindTrainer.historyFrame:SetScript("OnDragStop", BindTrainer.historyFrame.StopMovingOrSizing)
+BindTrainer.historyFrame:Hide()
+
+BindTrainer.historyFrame.title = BindTrainer.historyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+BindTrainer.historyFrame.title:SetPoint("TOPLEFT", 5, -5)
+BindTrainer.historyFrame.title:SetText("Session History")
+
+-- Create scrollframe for history
+BindTrainer.historyScrollFrame = CreateFrame("ScrollFrame", nil, BindTrainer.historyFrame, "UIPanelScrollFrameTemplate")
+BindTrainer.historyScrollFrame:SetPoint("TOPLEFT", 10, -30)
+BindTrainer.historyScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
+
+BindTrainer.historyContent = CreateFrame("Frame", nil, BindTrainer.historyScrollFrame)
+BindTrainer.historyContent:SetSize(330, 1) -- Height will be adjusted dynamically
+BindTrainer.historyScrollFrame:SetScrollChild(BindTrainer.historyContent)
