@@ -38,17 +38,9 @@ end)
 
 -- Improved Debug function
 local function Debug(format, ...)
-    local args = {...}
-    for i = 1, select("#", ...) do
-        if args[i] == nil then
-            args[i] = "nil"
-        elseif type(args[i]) == "boolean" then
-            args[i] = args[i] and "true" or "false"
-        elseif type(args[i]) == "table" then
-            args[i] = "table: " .. tostring(args[i])
-        end
+    if BindTrainer.debugMode then
+        print(string.format("|cFF00FF00BindTrainer Debug:|r " .. format, ...))
     end
-    print(string.format("|cFF00FF00BindTrainer Debug:|r " .. format, unpack(args)))
 end
 
 -- Function to get relevant bindings for an action
@@ -109,13 +101,13 @@ local function ShuffleTable(t)
     end
 end
 
--- Populate flashcards with actions from action bars
+-- Upravená funkcia PopulateFlashcards
 function BindTrainer:PopulateFlashcards()
-    Debug("Starting to populate flashcards...")
     local newFlashcards = {}
+    local seenSpells = {}
     local count = 0
 
-    for i = 1, 120 do  -- Scanning all action buttons
+    for i = 1, 180 do
         local actionType, id, subType = GetActionInfo(i)
         local name, icon
         
@@ -127,36 +119,22 @@ function BindTrainer:PopulateFlashcards()
             name, icon = GetMacroInfo(id)
         end
         
-        Debug("Checking action slot %d: type=%s, id=%s, subType=%s, name=%s", i, tostring(actionType), tostring(id), tostring(subType), tostring(name))
-        
-        if actionType and name and icon then
+        if actionType and name and icon and not seenSpells[name] then
             local bindings = GetRelevantBindings(actionType, id, name, i)
             
             if #bindings > 0 then
-                local bindingString = table.concat(bindings, ", ")
-                table.insert(newFlashcards, {spell = name, bind = bindingString, icon = icon, id = id, type = actionType})
+                table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType})
+                seenSpells[name] = true
                 count = count + 1
-                Debug("Added %s: %s, binds: %s, id: %s", actionType, name, bindingString, tostring(id))
-            else
-                Debug("WARNING: No binding found for %s: %s, id: %s", actionType, tostring(name), tostring(id))
             end
-        else
-            Debug("No valid action, name, or icon found in slot %d", i)
         end
     end
 
-    -- Shuffle flashcards
-    ShuffleTable(newFlashcards)
-
-    -- Replace old table with new
+    -- Nahradenie starej tabuľky novou
     self.flashcards = newFlashcards
-    self.currentCard = 1  -- Reset to first card
+    self.currentCard = 1  -- Reset na prvú kartu
 
-    Debug("Total actions added and shuffled: %d", count)
-    
-    if count == 0 then
-        Debug("WARNING: No bound actions found on action bars. Please check your action bars and key bindings.")
-    end
+    print(string.format("Celkový počet unikátnych akcií pridaných: %d", #self.flashcards))
 end
 
 -- Check flashcards integrity
@@ -186,7 +164,13 @@ function BindTrainer:ShowFlashcard()
     self.currentSpell = card.spell  -- Save current spell for later check
     self.currentType = card.type    -- Save current type for later check
     self.currentId = card.id        -- Save current ID for later check
-    print(string.format("Use the keybind (%s) for: %s (%d/%d)", card.bind, card.spell, self.currentCard, self.currentSession.totalFlashcards))
+    
+    if self.currentSession then
+        print(string.format("Použite klávesovú skratku (%s) pre: %s (%d/%d)", card.bind, card.spell, self.currentCard, self.currentSession.totalFlashcards))
+    else
+        print(string.format("Použite klávesovú skratku (%s) pre: %s", card.bind, card.spell))
+    end
+    
     self:Show()
 end
 
@@ -229,63 +213,78 @@ function BindTrainer:ShakeIcon()
     DoShake(1)
 end
 
--- Check answer
+-- Upravená funkcia CheckAnswer
 function BindTrainer:CheckAnswer(actionType, actionId)
-    if not self.isSessionActive then return end  -- If session is not active, do nothing
+    if not self.isSessionActive or not self.currentSession then return end
 
-    Debug("CheckAnswer called with actionType=%s, actionId=%s", tostring(actionType), tostring(actionId))
-    
     if not self.currentSpell or not self.currentType or not self.currentId then
-        Debug("Error: Current spell information is missing")
+        Debug("Chyba: Chýbajú informácie o aktuálnom kúzle")
         return
     end
 
-    if self.currentSession then
-        self.currentSession.totalActions = self.currentSession.totalActions + 1
-    end
+    self.currentSession.totalActions = self.currentSession.totalActions + 1
 
     if self.currentType == actionType and self.currentId == actionId then
         print(string.format("Correct! You used the right action: %s", self.currentSpell))
-        if self.PlaySound then
-            self:PlaySound(true)
-        else
-            Debug("Warning: PlaySound method not found")
-        end
+        self:PlaySound(true)
         self:NextFlashcard()
     else
         print(string.format("Incorrect. Expected %s (%s), but got %s with ID %s", 
             self.currentSpell, self.currentType, actionType or "Unknown", tostring(actionId) or "Unknown"))
-        if self.PlaySound then
-            self.PlaySound(false)
-        else
-            Debug("Warning: PlaySound method not found")
-        end
-        if self.ShakeIcon then
-            self:ShakeIcon()
-        else
-            Debug("Warning: ShakeIcon method not found")
-        end
-        if self.currentSession then
-            self.currentSession.mistakes = self.currentSession.mistakes + 1
-        end
+        self:PlaySound(false)
+        self:ShakeIcon()
+        self.currentSession.mistakes = self.currentSession.mistakes + 1
     end
 end
 
--- Next flashcard
+-- Upravená funkcia NextFlashcard
 function BindTrainer:NextFlashcard()
     self:CheckFlashcardsIntegrity()
     if #self.flashcards == 0 then
-        print("|cFFFF0000BindTrainer Error:|r No valid flashcards remaining. Ending session...")
+        print("|cFFFF0000BindTrainer Error:|r Žiadne platné flashcardy. Ukončujem reláciu...")
         self:EndSession()
-    else
-        self.currentCard = (self.currentCard % #self.flashcards) + 1
-        print(string.format("Moving to next flashcard. Current card: %d", self.currentCard))
-        if self.currentCard == 1 and self.currentSession then
-            self:EndSession()
-        else
-            self:ShowFlashcard()
+        return
+    end
+
+    if not self.currentSession then
+        print("|cFFFF0000BindTrainer Error:|r Žiadna aktívna relácia. Začínam novú...")
+        self:StartSession()
+        return
+    end
+
+    -- Kontrola, či sme už prešli všetky flashcardy
+    if #self.currentSession.seenFlashcards >= self.currentSession.totalFlashcards then
+        print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
+        self:EndSession()
+        return
+    end
+
+    -- Vytvorenie zoznamu nevidených flashcardov
+    if not self.currentSession.unseenFlashcards then
+        self.currentSession.unseenFlashcards = {}
+        for i, card in ipairs(self.flashcards) do
+            if not self.currentSession.seenFlashcards[card.id] then
+                table.insert(self.currentSession.unseenFlashcards, i)
+            end
         end
     end
+
+    -- Výber náhodného nevidenéh flashcardu
+    if #self.currentSession.unseenFlashcards > 0 then
+        local randomIndex = math.random(1, #self.currentSession.unseenFlashcards)
+        self.currentCard = self.currentSession.unseenFlashcards[randomIndex]
+        table.remove(self.currentSession.unseenFlashcards, randomIndex)
+    else
+        print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
+        self:EndSession()
+        return
+    end
+
+    local newCard = self.flashcards[self.currentCard]
+    self.currentSession.seenFlashcards[newCard.id] = true
+
+    print(string.format("Prechádzam na ďalší flashcard. Aktuálny flashcard: %d", self.currentCard))
+    self:ShowFlashcard()
 end
 
 -- Restart training
@@ -299,23 +298,25 @@ end
 -- New function to start a session
 function BindTrainer:StartSession()
     if self.currentSession then
-        print("Session is already running.")
+        print("Relácia už beží.")
         return
     end
 
     self:PopulateFlashcards()
     self.currentSession = {
-        startTime = GetTime(),
+        startTime = nil,  -- Nastavíme neskôr
         endTime = nil,
         mistakes = 0,
         totalActions = 0,
-        skips = 0,  -- New field for skip count
-        totalFlashcards = #self.flashcards,  -- Add total flashcards count
+        skips = 0,
+        totalFlashcards = #self.flashcards,
+        seenFlashcards = {},
     }
 
-    print(string.format("Starting a new session with %d flashcards!", self.currentSession.totalFlashcards))
+    self.currentCard = 1
+    print(string.format("Začínam novú reláciu s %d flashcardmi!", self.currentSession.totalFlashcards))
 
-    -- Countdown
+    -- Odpočítavanie
     local countdown = 3
     self.countdownFrame:Show()
     local function DoCountdown()
@@ -324,15 +325,16 @@ function BindTrainer:StartSession()
             countdown = countdown - 1
             C_Timer.After(1, DoCountdown)
         elseif countdown == 0 then
-            self.countdownText:SetText("Start!")
+            self.countdownText:SetText("Štart!")
             countdown = countdown - 1
             C_Timer.After(1, DoCountdown)
         else
             self.countdownFrame:Hide()
-            print("Session started!")
-            self:Show()  -- Show the main icon
-            self.skipButton:Show()  -- Show the Skip button
-            self.isSessionActive = true  -- Set session as active
+            print("Relácia začala!")
+            self:Show()  -- Zobrazenie hlavnej ikony
+            self.skipButton:Show()  -- Zobrazenie tlačidla Skip
+            self.isSessionActive = true  -- Nastavenie relácie ako aktívnej
+            self.currentSession.startTime = GetTime()  -- Nastavenie času začiatku relácie
             self:ShowFlashcard()
             self:UpdateSessionTimer()
         end
@@ -347,18 +349,19 @@ function BindTrainer:EndSession()
         return
     end
 
-    self.isSessionActive = false  -- Set session as inactive
+    self.isSessionActive = false
 
     self.currentSession.endTime = GetTime()
     local duration = self.currentSession.endTime - self.currentSession.startTime
     local apm = self.currentSession.totalActions / (duration / 60)
 
-    print("Session ended!")
-    print(string.format("Total time: %.2f seconds", duration))
-    print(string.format("Actions per minute: %.2f", apm))
-    print(string.format("Number of mistakes: %d", self.currentSession.mistakes))
-    print(string.format("Number of skips: %d", self.currentSession.skips))
-    print(string.format("Total number of flashcards: %d", self.currentSession.totalFlashcards))
+    print("Relácia skončila!")
+    print(string.format("Celkový čas: %.2f sekúnd", duration))
+    print(string.format("Akcií za minútu: %.2f", apm))
+    print(string.format("Počet chýb: %d", self.currentSession.mistakes))
+    print(string.format("Počet preskočených: %d", self.currentSession.skips))
+    print(string.format("Celkový počet flashcardov: %d", self.currentSession.totalFlashcards))
+    print(string.format("Počet unikátnych flashcardov: %d", #self.currentSession.seenFlashcards))
 
     -- Save session to history
     table.insert(self.sessionHistory, {
@@ -402,7 +405,7 @@ function BindTrainer:UpdateSessionTimer()
     if not self.currentSession then return end
 
     local elapsed = GetTime() - self.currentSession.startTime
-    print(string.format("Session time: %.2f seconds", elapsed))
+    print(string.format("Čas relácie: %.2f sekúnd", elapsed))
 
     C_Timer.After(1, function() self:UpdateSessionTimer() end)
 end
@@ -541,4 +544,13 @@ end
 -- Funkcia na uloženie histórie do SavedVariables
 function BindTrainer:SaveSessionHistory()
     BindTrainerSavedVariables.sessionHistory = self.sessionHistory
+end
+
+-- Debug mode
+BindTrainer.debugMode = false
+
+SLASH_BINDTRAINERDEBUG1 = "/btdebug"
+SlashCmdList["BINDTRAINERDEBUG"] = function()
+    BindTrainer.debugMode = not BindTrainer.debugMode
+    print("BindTrainer debug mode: " .. (BindTrainer.debugMode and "ON" or "OFF"))
 end
