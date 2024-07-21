@@ -123,7 +123,7 @@ function BindTrainer:PopulateFlashcards()
             local bindings = GetRelevantBindings(actionType, id, name, i)
             
             if #bindings > 0 then
-                table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType})
+                table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType, slot = i})
                 seenSpells[name] = true
                 count = count + 1
             end
@@ -134,7 +134,8 @@ function BindTrainer:PopulateFlashcards()
     self.flashcards = newFlashcards
     self.currentCard = 1  -- Reset na prvú kartu
 
-    print(string.format("Celkový počet unikátnych akcií pridaných: %d", #self.flashcards))
+    print(string.format("Celkový počet unikátnych akcií pridaných: %d", count))
+    self:DebugFlashcards()
 end
 
 -- Check flashcards integrity
@@ -253,7 +254,7 @@ function BindTrainer:NextFlashcard()
     end
 
     -- Kontrola, či sme už prešli všetky flashcardy
-    if #self.currentSession.seenFlashcards >= self.currentSession.totalFlashcards then
+    if #self.currentSession.seenFlashcards >= #self.flashcards then
         print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
         self:EndSession()
         return
@@ -263,7 +264,7 @@ function BindTrainer:NextFlashcard()
     if not self.currentSession.unseenFlashcards then
         self.currentSession.unseenFlashcards = {}
         for i, card in ipairs(self.flashcards) do
-            if not self.currentSession.seenFlashcards[card.id] then
+            if not self.currentSession.seenFlashcards[card.spell] then
                 table.insert(self.currentSession.unseenFlashcards, i)
             end
         end
@@ -281,7 +282,7 @@ function BindTrainer:NextFlashcard()
     end
 
     local newCard = self.flashcards[self.currentCard]
-    self.currentSession.seenFlashcards[newCard.id] = true
+    self.currentSession.seenFlashcards[newCard.spell] = true
 
     print(string.format("Prechádzam na ďalší flashcard. Aktuálny flashcard: %d", self.currentCard))
     self:ShowFlashcard()
@@ -311,6 +312,7 @@ function BindTrainer:StartSession()
         skips = 0,
         totalFlashcards = #self.flashcards,
         seenFlashcards = {},
+        unseenFlashcards = nil,  -- Bude inicializované v NextFlashcard
     }
 
     self.currentCard = 1
@@ -553,4 +555,13 @@ SLASH_BINDTRAINERDEBUG1 = "/btdebug"
 SlashCmdList["BINDTRAINERDEBUG"] = function()
     BindTrainer.debugMode = not BindTrainer.debugMode
     print("BindTrainer debug mode: " .. (BindTrainer.debugMode and "ON" or "OFF"))
+end
+
+-- Debug function for flashcards
+function BindTrainer:DebugFlashcards()
+    print("Debug: Flashcards")
+    print("Total flashcards: " .. #self.flashcards)
+    for i, card in ipairs(self.flashcards) do
+        print(string.format("%d. %s (Slot: %d, Type: %s, ID: %s)", i, card.spell, card.slot, card.type, tostring(card.id)))
+    end
 end
