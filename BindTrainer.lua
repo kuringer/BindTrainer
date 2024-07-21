@@ -6,6 +6,10 @@ BindTrainer:RegisterEvent("UPDATE_BINDINGS")
 BindTrainer.flashcards = {}
 BindTrainer.currentCard = 1
 
+-- New variables for sessions
+BindTrainer.currentSession = nil
+BindTrainer.sessionHistory = {}
+
 -- Create main frame
 BindTrainer:SetSize(100, 100)
 BindTrainer:SetPoint("CENTER")
@@ -231,6 +235,10 @@ function BindTrainer:CheckAnswer(actionType, actionId)
         return
     end
 
+    if self.currentSession then
+        self.currentSession.totalActions = self.currentSession.totalActions + 1
+    end
+
     if self.currentType == actionType and self.currentId == actionId then
         print(string.format("Correct! You used the right action: %s", self.currentSpell))
         if self.PlaySound then
@@ -252,19 +260,26 @@ function BindTrainer:CheckAnswer(actionType, actionId)
         else
             Debug("Warning: ShakeIcon method not found")
         end
+        if self.currentSession then
+            self.currentSession.mistakes = self.currentSession.mistakes + 1
+        end
     end
 end
 
 -- Next flashcard
 function BindTrainer:NextFlashcard()
-    self:CheckFlashcardsIntegrity()  -- Check integrity
+    self:CheckFlashcardsIntegrity()
     if #self.flashcards == 0 then
-        print("|cFFFF0000BindTrainer Error:|r No valid flashcards remaining. Repopulating...")
-        self:PopulateFlashcards()
+        print("|cFFFF0000BindTrainer Error:|r No valid flashcards remaining. Ending session...")
+        self:EndSession()
     else
         self.currentCard = (self.currentCard % #self.flashcards) + 1
         print(string.format("Moving to next flashcard. Current card: %d", self.currentCard))
-        self:ShowFlashcard()
+        if self.currentCard == 1 and self.currentSession then
+            self:EndSession()
+        else
+            self:ShowFlashcard()
+        end
     end
 end
 
@@ -274,6 +289,100 @@ function BindTrainer:RestartTraining()
     self.currentCard = 1
     print("Training restarted with a new random order.")
     self:ShowFlashcard()
+end
+
+-- New function to start a session
+function BindTrainer:StartSession()
+    if self.currentSession then
+        print("Session already running.")
+        return
+    end
+
+    self:PopulateFlashcards()
+    self.currentSession = {
+        startTime = GetTime(),
+        endTime = nil,
+        mistakes = 0,
+        totalActions = 0,
+    }
+
+    -- Countdown
+    local countdown = 3
+    local function DoCountdown()
+        if countdown > 0 then
+            print("Session will start in " .. countdown)
+            countdown = countdown - 1
+            C_Timer.After(1, DoCountdown)
+        else
+            print("Session started!")
+            self:ShowFlashcard()
+            self:UpdateSessionTimer()
+        end
+    end
+    DoCountdown()
+end
+
+-- New function to end a session
+function BindTrainer:EndSession()
+    if not self.currentSession then
+        print("No active session.")
+        return
+    end
+
+    self.currentSession.endTime = GetTime()
+    local duration = self.currentSession.endTime - self.currentSession.startTime
+    local apm = self.currentSession.totalActions / (duration / 60)
+
+    print("Session ended!")
+    print(string.format("Total time: %.2f seconds", duration))
+    print(string.format("Actions per minute: %.2f", apm))
+    print(string.format("Mistakes: %d", self.currentSession.mistakes))
+
+    -- Save session to history
+    table.insert(self.sessionHistory, {
+        date = date("%Y-%m-%d %H:%M:%S"),
+        duration = duration,
+        mistakes = self.currentSession.mistakes,
+        apm = apm
+    })
+
+    -- Ask user if they want to start a new session
+    StaticPopupDialogs["BINDTRAINER_NEW_SESSION"] = {
+        text = "Do you want to start a new session?",
+        button1 = "Yes",
+        button2 = "No",
+        OnAccept = function()
+            self:StartSession()
+        end,
+        OnCancel = function()
+            self:Hide()
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+    }
+    StaticPopup_Show("BINDTRAINER_NEW_SESSION")
+
+    self.currentSession = nil
+end
+
+-- New function to update session timer
+function BindTrainer:UpdateSessionTimer()
+    if not self.currentSession then return end
+
+    local elapsed = GetTime() - self.currentSession.startTime
+    print(string.format("Session time: %.2f seconds", elapsed))
+
+    C_Timer.After(1, function() self:UpdateSessionTimer() end)
+end
+
+-- New function to show session history
+function BindTrainer:ShowSessionHistory()
+    print("Session history:")
+    for i, session in ipairs(self.sessionHistory) do
+        print(string.format("%d. %s - Duration: %.2fs, APM: %.2f, Mistakes: %d", 
+            i, session.date, session.duration, session.apm, session.mistakes))
+    end
 end
 
 -- Initialize
@@ -297,14 +406,39 @@ end)
 -- Slash commands
 SLASH_BINDTRAINER1 = "/bt"
 SlashCmdList["BINDTRAINER"] = function()
-    BindTrainer:ShowFlashcard()
+    BindTrainer:StartSession()
 end
 
 SLASH_BINDTRAINEREND1 = "/btend"
 SlashCmdList["BINDTRAINEREND"] = function()
-    BindTrainer:Hide()
-    print("Bind training ended.")
+    BindTrainer:EndSession()
 end
+
+SLASH_BINDTRAINERHISTORY1 = "/bthistory"
+SlashCmdList["BINDTRAINERHISTORY"] = function()
+    BindTrainer:ShowSessionHistory()
+end
+
+-- Addon loaded event
+function BindTrainer:OnAddonLoaded(addonName)
+    if addonName ~= "BindTrainer" then return end
+    
+    if BindTrainerSavedVariables then
+        self.sessionHistory = BindTrainerSavedVariables.sessionHistory or {}
+    else
+        BindTrainerSavedVariables = {sessionHistory = {}}
+    end
+end
+
+BindTrainer:RegisterEvent("ADDON_LOADED")
+BindTrainer:SetScript("OnEvent", function(self, event, ...)
+    if event == "ADDON_LOADED" then
+        self:OnAddonLoaded(...)
+    elseif event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
+        self:PopulateFlashcards()
+        print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
+    end
+end)
 
 -- Restart training
 SLASH_BINDTRAINERRESTART1 = "/btrestart"
