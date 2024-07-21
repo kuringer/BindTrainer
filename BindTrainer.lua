@@ -231,6 +231,8 @@ end
 
 -- Check answer
 function BindTrainer:CheckAnswer(actionType, actionId)
+    if not self.isSessionActive then return end  -- If session is not active, do nothing
+
     Debug("CheckAnswer called with actionType=%s, actionId=%s", tostring(actionType), tostring(actionId))
     
     if not self.currentSpell or not self.currentType or not self.currentId then
@@ -297,7 +299,7 @@ end
 -- New function to start a session
 function BindTrainer:StartSession()
     if self.currentSession then
-        print("Session already running.")
+        print("Session is already running.")
         return
     end
 
@@ -311,7 +313,7 @@ function BindTrainer:StartSession()
         totalFlashcards = #self.flashcards,  -- Add total flashcards count
     }
 
-    print(string.format("Starting new session with %d flashcards!", self.currentSession.totalFlashcards))
+    print(string.format("Starting a new session with %d flashcards!", self.currentSession.totalFlashcards))
 
     -- Countdown
     local countdown = 3
@@ -330,6 +332,7 @@ function BindTrainer:StartSession()
             print("Session started!")
             self:Show()  -- Show the main icon
             self.skipButton:Show()  -- Show the Skip button
+            self.isSessionActive = true  -- Set session as active
             self:ShowFlashcard()
             self:UpdateSessionTimer()
         end
@@ -344,6 +347,8 @@ function BindTrainer:EndSession()
         return
     end
 
+    self.isSessionActive = false  -- Set session as inactive
+
     self.currentSession.endTime = GetTime()
     local duration = self.currentSession.endTime - self.currentSession.startTime
     local apm = self.currentSession.totalActions / (duration / 60)
@@ -351,9 +356,9 @@ function BindTrainer:EndSession()
     print("Session ended!")
     print(string.format("Total time: %.2f seconds", duration))
     print(string.format("Actions per minute: %.2f", apm))
-    print(string.format("Mistakes: %d", self.currentSession.mistakes))
-    print(string.format("Skips: %d", self.currentSession.skips))
-    print(string.format("Total flashcards: %d", self.currentSession.totalFlashcards))
+    print(string.format("Number of mistakes: %d", self.currentSession.mistakes))
+    print(string.format("Number of skips: %d", self.currentSession.skips))
+    print(string.format("Total number of flashcards: %d", self.currentSession.totalFlashcards))
 
     -- Save session to history
     table.insert(self.sessionHistory, {
@@ -436,11 +441,11 @@ end)
 
 -- Hook spell cast
 hooksecurefunc("UseAction", function(slot, checkCursor, onSelf)
+    if not BindTrainer.isSessionActive then return end  -- If session is not active, do nothing
+
     local actionType, id = GetActionInfo(slot)
     Debug("UseAction hook called with slot=%s, actionType=%s, id=%s", tostring(slot), tostring(actionType), tostring(id))
-    if BindTrainer:IsShown() then
-        BindTrainer:CheckAnswer(actionType, id)
-    end
+    BindTrainer:CheckAnswer(actionType, id)
 end)
 
 -- Slash commands
