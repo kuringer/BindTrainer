@@ -308,12 +308,18 @@ function BindTrainer:StartSession()
 
     -- Countdown
     local countdown = 3
+    self.countdownFrame:Show()
     local function DoCountdown()
         if countdown > 0 then
-            print("Session will start in " .. countdown)
+            self.countdownText:SetText(countdown)
+            countdown = countdown - 1
+            C_Timer.After(1, DoCountdown)
+        elseif countdown == 0 then
+            self.countdownText:SetText("Start!")
             countdown = countdown - 1
             C_Timer.After(1, DoCountdown)
         else
+            self.countdownFrame:Hide()
             print("Session started!")
             self:ShowFlashcard()
             self:UpdateSessionTimer()
@@ -434,9 +440,14 @@ BindTrainer:RegisterEvent("ADDON_LOADED")
 BindTrainer:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         self:OnAddonLoaded(...)
-    elseif event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
-        self:PopulateFlashcards()
-        print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
+    elseif event == "PLAYER_LOGOUT" then
+        BindTrainerSavedVariables.sessionHistory = self.sessionHistory
+    else
+        -- Existujúca logika pre iné eventy
+        if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
+            self:PopulateFlashcards()
+            print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
+        end
     end
 end)
 
@@ -445,3 +456,13 @@ SLASH_BINDTRAINERRESTART1 = "/btrestart"
 SlashCmdList["BINDTRAINERRESTART"] = function()
     BindTrainer:RestartTraining()
 end
+
+-- Vytvorenie frame pre odpočítavanie
+BindTrainer.countdownFrame = CreateFrame("Frame", nil, UIParent)
+BindTrainer.countdownFrame:SetSize(200, 100)
+BindTrainer.countdownFrame:SetPoint("CENTER")
+BindTrainer.countdownFrame:Hide()
+
+BindTrainer.countdownText = BindTrainer.countdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+BindTrainer.countdownText:SetPoint("CENTER")
+BindTrainer.countdownText:SetText("")
