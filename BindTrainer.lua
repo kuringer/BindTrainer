@@ -328,6 +328,8 @@ function BindTrainer:StartSession()
         else
             self.countdownFrame:Hide()
             print("Session started!")
+            self:Show()  -- Show the main icon
+            self.skipButton:Show()  -- Show the Skip button
             self:ShowFlashcard()
             self:UpdateSessionTimer()
         end
@@ -365,6 +367,11 @@ function BindTrainer:EndSession()
     self:SaveSessionHistory()
     Debug("Added new session to history. Total sessions: " .. #self.sessionHistory)
 
+    -- Hide the main icon and relevant elements
+    self:Hide()
+    self.skipButton:Hide()
+    -- If you have any other visible elements, hide them here
+
     -- Ask user if they want to start a new session
     StaticPopupDialogs["BINDTRAINER_NEW_SESSION"] = {
         text = "Do you want to start a new session?",
@@ -374,7 +381,7 @@ function BindTrainer:EndSession()
             self:StartSession()
         end,
         OnCancel = function()
-            self:Hide()
+            -- No need to hide anything, as we've already hidden them above
         end,
         timeout = 0,
         whileDead = true,
