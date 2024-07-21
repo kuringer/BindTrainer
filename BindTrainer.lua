@@ -247,6 +247,8 @@ end
 
 -- Upravená funkcia NextFlashcard
 function BindTrainer:NextFlashcard()
+    if not self.isSessionActive or not self.currentSession then return end
+
     self:CheckFlashcardsIntegrity()
     if #self.flashcards == 0 then
         print("|cFFFF0000BindTrainer Error:|r Žiadne platné flashcardy. Ukončujem reláciu...")
@@ -254,44 +256,22 @@ function BindTrainer:NextFlashcard()
         return
     end
 
-    if not self.currentSession then
-        print("|cFFFF0000BindTrainer Error:|r Žiadna aktívna relácia. Začínam novú...")
-        self:StartSession()
-        return
-    end
-
     -- Kontrola, či sme už prešli všetky flashcardy
-    if #self.currentSession.seenFlashcards >= #self.flashcards then
+    if #self.currentSession.unseenFlashcards == 0 then
         print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
         self:EndSession()
         return
-    end
-
-    -- Vytvorenie zoznamu nevidených flashcardov
-    if not self.currentSession.unseenFlashcards then
-        self.currentSession.unseenFlashcards = {}
-        for i, card in ipairs(self.flashcards) do
-            if not self.currentSession.seenFlashcards[card.spell] then
-                table.insert(self.currentSession.unseenFlashcards, i)
-            end
-        end
     end
 
     -- Výber náhodného nevidenéh flashcardu
-    if #self.currentSession.unseenFlashcards > 0 then
-        local randomIndex = math.random(1, #self.currentSession.unseenFlashcards)
-        self.currentCard = table.remove(self.currentSession.unseenFlashcards, randomIndex)
-        
-        local newCard = self.flashcards[self.currentCard]
-        self.currentSession.seenFlashcards[newCard.spell] = true
+    local randomIndex = math.random(1, #self.currentSession.unseenFlashcards)
+    self.currentCard = table.remove(self.currentSession.unseenFlashcards, randomIndex)
+    
+    local newCard = self.flashcards[self.currentCard]
+    self.currentSession.seenFlashcards[newCard.spell] = true
 
-        print(string.format("Vybraný flashcard: %d - %s (Celkovo zobrazené: %d/%d)", 
-            self.currentCard, newCard.spell, #self.currentSession.seenFlashcards, self.currentSession.totalFlashcards))
-    else
-        print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
-        self:EndSession()
-        return
-    end
+    print(string.format("Vybraný flashcard: %d - %s (Celkovo zobrazené: %d/%d)", 
+        self.currentCard, newCard.spell, #self.currentSession.seenFlashcards, self.currentSession.totalFlashcards))
 
     self:ShowFlashcard()
 end
@@ -329,14 +309,11 @@ function BindTrainer:StartSession()
     print(string.format("Začínam novú reláciu s %d flashcardmi!", self.currentSession.totalFlashcards))
     print("Flashcardy budú zobrazované v náhodnom poradí.")
 
-    -- Inicializujeme unseenFlashcards tu
+    -- Inicializujeme unseenFlashcards
     self.currentSession.unseenFlashcards = {}
     for i = 1, #self.flashcards do
         table.insert(self.currentSession.unseenFlashcards, i)
     end
-
-    -- A hneď zavoláme NextFlashcard, aby sme vybrali prvú náhodnú kartu
-    self:NextFlashcard()
 
     -- Odpočítavanie
     local countdown = 3
@@ -358,6 +335,7 @@ function BindTrainer:StartSession()
             self.isSessionActive = true  -- Nastavenie relácie ako aktívnej
             self.currentSession.startTime = GetTime()  -- Nastavenie času začiatku relácie
             self:UpdateSessionTimer()
+            self:NextFlashcard()  -- Volanie NextFlashcard až po dokončení odpočítavania
         end
     end
     DoCountdown()
