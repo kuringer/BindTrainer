@@ -30,6 +30,9 @@ BindTrainer.skipButton:SetSize(60, 25)
 BindTrainer.skipButton:SetPoint("BOTTOM", BindTrainer, "BOTTOM", 0, -30)
 BindTrainer.skipButton:SetText("Skip")
 BindTrainer.skipButton:SetScript("OnClick", function()
+    if BindTrainer.currentSession then
+        BindTrainer.currentSession.skips = BindTrainer.currentSession.skips + 1
+    end
     BindTrainer:NextFlashcard()
 end)
 
@@ -304,6 +307,7 @@ function BindTrainer:StartSession()
         endTime = nil,
         mistakes = 0,
         totalActions = 0,
+        skips = 0,  -- New field for skip count
     }
 
     -- Countdown
@@ -343,15 +347,17 @@ function BindTrainer:EndSession()
     print(string.format("Total time: %.2f seconds", duration))
     print(string.format("Actions per minute: %.2f", apm))
     print(string.format("Mistakes: %d", self.currentSession.mistakes))
+    print(string.format("Skips: %d", self.currentSession.skips))
 
     -- Save session to history
     table.insert(self.sessionHistory, {
         date = date("%Y-%m-%d %H:%M:%S"),
         duration = duration,
         mistakes = self.currentSession.mistakes,
-        apm = apm
+        apm = apm,
+        skips = self.currentSession.skips  -- Add skip count to history
     })
-    Debug("Pridaná nová session do histórie. Celkový počet: " .. #self.sessionHistory)
+    Debug("Added new session to history. Total sessions: " .. #self.sessionHistory)
 
     -- Ask user if they want to start a new session
     StaticPopupDialogs["BINDTRAINER_NEW_SESSION"] = {
@@ -385,7 +391,7 @@ end
 
 -- New function to show session history
 function BindTrainer:ShowSessionHistory()
-    Debug("Zobrazujem históriu sessions. Počet záznamov: " .. #self.sessionHistory)
+    Debug("Showing session history. Number of records: " .. #self.sessionHistory)
     BindTrainer.historyFrame:Show()
     
     -- Clear existing content
@@ -397,10 +403,10 @@ function BindTrainer:ShowSessionHistory()
     for i, session in ipairs(self.sessionHistory) do
         local sessionText = BindTrainer.historyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         sessionText:SetPoint("TOPLEFT", 0, -yOffset)
-        sessionText:SetText(string.format("%d. %s\nDuration: %.2fs, APM: %.2f, Mistakes: %d", 
-            i, session.date, session.duration, session.apm, session.mistakes))
-        yOffset = yOffset + 40
-        Debug("Pridaný záznam do histórie: " .. i)
+        sessionText:SetText(string.format("%d. %s\nDuration: %.2fs, APM: %.2f, Mistakes: %d, Skips: %d", 
+            i, session.date, session.duration, session.apm, session.mistakes, session.skips))
+        yOffset = yOffset + 50  -- Increase offset for more space
+        Debug("Added record to history: " .. i)
     end
     
     BindTrainer.historyContent:SetHeight(yOffset)
@@ -446,10 +452,10 @@ function BindTrainer:OnAddonLoaded(addonName)
     
     if BindTrainerSavedVariables then
         self.sessionHistory = BindTrainerSavedVariables.sessionHistory or {}
-        Debug("Načítaná história sessions: " .. #self.sessionHistory)
+        Debug("Loaded session history: " .. #self.sessionHistory)
     else
         BindTrainerSavedVariables = {sessionHistory = {}}
-        Debug("Vytvorená nová história sessions")
+        Debug("Created new session history")
     end
 end
 
@@ -459,7 +465,7 @@ BindTrainer:SetScript("OnEvent", function(self, event, ...)
         self:OnAddonLoaded(...)
     elseif event == "PLAYER_LOGOUT" then
         BindTrainerSavedVariables.sessionHistory = self.sessionHistory
-        Debug("Uložená história sessions: " .. #self.sessionHistory)
+        Debug("Saved session history: " .. #self.sessionHistory)
     else
         -- Existing logic for other events
         if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
