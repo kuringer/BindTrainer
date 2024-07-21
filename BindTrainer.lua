@@ -186,7 +186,7 @@ function BindTrainer:ShowFlashcard()
     self.currentSpell = card.spell  -- Save current spell for later check
     self.currentType = card.type    -- Save current type for later check
     self.currentId = card.id        -- Save current ID for later check
-    print(string.format("Use the keybind (%s) for: %s", card.bind, card.spell))
+    print(string.format("Use the keybind (%s) for: %s (%d/%d)", card.bind, card.spell, self.currentCard, self.currentSession.totalFlashcards))
     self:Show()
 end
 
@@ -308,7 +308,10 @@ function BindTrainer:StartSession()
         mistakes = 0,
         totalActions = 0,
         skips = 0,  -- New field for skip count
+        totalFlashcards = #self.flashcards,  -- Add total flashcards count
     }
+
+    print(string.format("Starting new session with %d flashcards!", self.currentSession.totalFlashcards))
 
     -- Countdown
     local countdown = 3
@@ -348,6 +351,7 @@ function BindTrainer:EndSession()
     print(string.format("Actions per minute: %.2f", apm))
     print(string.format("Mistakes: %d", self.currentSession.mistakes))
     print(string.format("Skips: %d", self.currentSession.skips))
+    print(string.format("Total flashcards: %d", self.currentSession.totalFlashcards))
 
     -- Save session to history
     table.insert(self.sessionHistory, {
@@ -355,7 +359,8 @@ function BindTrainer:EndSession()
         duration = duration,
         mistakes = self.currentSession.mistakes,
         apm = apm,
-        skips = self.currentSession.skips  -- Add skip count to history
+        skips = self.currentSession.skips,  -- Add skip count to history
+        totalFlashcards = self.currentSession.totalFlashcards  -- Add total flashcards count to history
     })
     Debug("Added new session to history. Total sessions: " .. #self.sessionHistory)
 
@@ -403,9 +408,9 @@ function BindTrainer:ShowSessionHistory()
     for i, session in ipairs(self.sessionHistory) do
         local sessionText = BindTrainer.historyContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         sessionText:SetPoint("TOPLEFT", 0, -yOffset)
-        sessionText:SetText(string.format("%d. %s\nDuration: %.2fs, APM: %.2f, Mistakes: %d, Skips: %d", 
-            i, session.date, session.duration, session.apm, session.mistakes, session.skips))
-        yOffset = yOffset + 50  -- Increase offset for more space
+        sessionText:SetText(string.format("%d. %s\nDuration: %.2fs, APM: %.2f, Mistakes: %d, Skips: %d\nTotal flashcards: %d", 
+            i, session.date, session.duration, session.apm, session.mistakes, session.skips, session.totalFlashcards))
+        yOffset = yOffset + 60  -- Increase offset for more space
         Debug("Added record to history: " .. i)
     end
     
