@@ -123,13 +123,10 @@ function BindTrainer:PopulateFlashcards()
             local bindings = GetRelevantBindings(actionType, id, name, i)
             
             if #bindings > 0 then
-                if seenSpells[name] then
-                    Debug("Duplicitný spell nájdený: %s (Slot: %d, Predchádzajúci slot: %d)", name, i, seenSpells[name])
-                else
+                if not seenSpells[name] then
                     table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType, slot = i})
                     seenSpells[name] = i
                     count = count + 1
-                    Debug("Pridaný nový flashcard: %s (Slot: %d)", name, i)
                 end
             end
         end
@@ -140,7 +137,6 @@ function BindTrainer:PopulateFlashcards()
     self.currentCard = 1  -- Reset na prvú kartu
 
     print(string.format("Celkový počet unikátnych akcií pridaných: %d", count))
-    self:DebugFlashcards()
 end
 
 -- Check flashcards integrity
@@ -172,12 +168,6 @@ function BindTrainer:ShowFlashcard()
     self.currentId = card.id        -- Save current ID for later check
     
     self:TrackFlashcardDisplay(card.spell)  -- Pridajte toto
-    
-    if self.currentSession then
-        print(string.format("Použite klávesovú skratku (%s) pre: %s (%d/%d)", card.bind, card.spell, self.currentCard, self.currentSession.totalFlashcards))
-    else
-        print(string.format("Použite klávesovú skratku (%s) pre: %s", card.bind, card.spell))
-    end
     
     self:Show()
 end
@@ -541,43 +531,12 @@ SlashCmdList["BINDTRAINERDEBUG"] = function()
     print("BindTrainer debug mode: " .. (BindTrainer.debugMode and "ON" or "OFF"))
 end
 
--- Debug function for flashcards
-function BindTrainer:DebugFlashcards()
-    print("Debug: Flashcards")
-    print("Total flashcards: " .. #self.flashcards)
-    for i, card in ipairs(self.flashcards) do
-        print(string.format("%d. %s (Slot: %d, Type: %s, ID: %s, Bind: %s)", i, card.spell, card.slot, card.type, tostring(card.id), card.bind))
-    end
-end
-
 -- Pridajte túto novú funkciu na sledovanie zobrazení flashcardov
 function BindTrainer:TrackFlashcardDisplay(spell)
     if not self.flashcardDisplayCount then
         self.flashcardDisplayCount = {}
     end
     self.flashcardDisplayCount[spell] = (self.flashcardDisplayCount[spell] or 0) + 1
-end
-
--- Pridajte túto novú funkciu na debugovanie počtu zobrazení flashcardov
-function BindTrainer:DebugFlashcardDisplayCount()
-    print("Debug: Počet zobrazení flashcardov")
-    for spell, count in pairs(self.flashcardDisplayCount) do
-        print(string.format("%s: %d", spell, count))
-    end
-    
-    print("Debug: Porovnanie s pôvodným zoznamom flashcardov")
-    for _, card in ipairs(self.flashcards) do
-        local displayCount = self.flashcardDisplayCount[card.spell] or 0
-        print(string.format("%s: Zobrazené %d krát", card.spell, displayCount))
-    end
-end
-
--- Nová funkcia na výpis zoznamu kúziel
-function BindTrainer:PrintSpellList()
-    print("Zoznam kúziel pre túto reláciu:")
-    for i, card in ipairs(self.flashcards) do
-        print(string.format("%d. %s (Slot: %d, Type: %s, ID: %s)", i, card.spell, card.slot, card.type, tostring(card.id)))
-    end
 end
 
 -- Funkcia na uloženie relácie do histórie
