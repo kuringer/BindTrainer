@@ -119,13 +119,18 @@ function BindTrainer:PopulateFlashcards()
             name, icon = GetMacroInfo(id)
         end
         
-        if actionType and name and icon and not seenSpells[name] then
+        if actionType and name and icon then
             local bindings = GetRelevantBindings(actionType, id, name, i)
             
             if #bindings > 0 then
-                table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType, slot = i})
-                seenSpells[name] = true
-                count = count + 1
+                if seenSpells[name] then
+                    Debug("Duplicitný spell nájdený: %s (Slot: %d, Predchádzajúci slot: %d)", name, i, seenSpells[name])
+                else
+                    table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType, slot = i})
+                    seenSpells[name] = i
+                    count = count + 1
+                    Debug("Pridaný nový flashcard: %s (Slot: %d)", name, i)
+                end
             end
         end
     end
@@ -165,6 +170,8 @@ function BindTrainer:ShowFlashcard()
     self.currentSpell = card.spell  -- Save current spell for later check
     self.currentType = card.type    -- Save current type for later check
     self.currentId = card.id        -- Save current ID for later check
+    
+    self:TrackFlashcardDisplay(card.spell)  -- Pridajte toto
     
     if self.currentSession then
         print(string.format("Použite klávesovú skratku (%s) pre: %s (%d/%d)", card.bind, card.spell, self.currentCard, self.currentSession.totalFlashcards))
@@ -273,18 +280,19 @@ function BindTrainer:NextFlashcard()
     -- Výber náhodného nevidenéh flashcardu
     if #self.currentSession.unseenFlashcards > 0 then
         local randomIndex = math.random(1, #self.currentSession.unseenFlashcards)
-        self.currentCard = self.currentSession.unseenFlashcards[randomIndex]
-        table.remove(self.currentSession.unseenFlashcards, randomIndex)
+        self.currentCard = table.remove(self.currentSession.unseenFlashcards, randomIndex)
+        
+        local newCard = self.flashcards[self.currentCard]
+        self.currentSession.seenFlashcards[newCard.spell] = true
+
+        print(string.format("Vybraný flashcard: %d - %s (Celkovo zobrazené: %d/%d)", 
+            self.currentCard, newCard.spell, #self.currentSession.seenFlashcards, self.currentSession.totalFlashcards))
     else
         print("Všetky flashcardy boli zobrazené. Ukončujem reláciu...")
         self:EndSession()
         return
     end
 
-    local newCard = self.flashcards[self.currentCard]
-    self.currentSession.seenFlashcards[newCard.spell] = true
-
-    print(string.format("Prechádzam na ďalší flashcard. Aktuálny flashcard: %d", self.currentCard))
     self:ShowFlashcard()
 end
 
@@ -304,19 +312,31 @@ function BindTrainer:StartSession()
     end
 
     self:PopulateFlashcards()
+    print("Počiatočný zoznam všetkých dostupných flashcardov:")
+    self:PrintSpellList()
+
     self.currentSession = {
-        startTime = nil,  -- Nastavíme neskôr
+        startTime = nil,
         endTime = nil,
         mistakes = 0,
         totalActions = 0,
         skips = 0,
         totalFlashcards = #self.flashcards,
         seenFlashcards = {},
-        unseenFlashcards = nil,  -- Bude inicializované v NextFlashcard
+        unseenFlashcards = nil,
     }
 
-    self.currentCard = 1
     print(string.format("Začínam novú reláciu s %d flashcardmi!", self.currentSession.totalFlashcards))
+    print("Flashcardy budú zobrazované v náhodnom poradí.")
+
+    -- Inicializujeme unseenFlashcards tu
+    self.currentSession.unseenFlashcards = {}
+    for i = 1, #self.flashcards do
+        table.insert(self.currentSession.unseenFlashcards, i)
+    end
+
+    -- A hneď zavoláme NextFlashcard, aby sme vybrali prvú náhodnú kartu
+    self:NextFlashcard()
 
     -- Odpočítavanie
     local countdown = 3
@@ -337,7 +357,6 @@ function BindTrainer:StartSession()
             self.skipButton:Show()  -- Zobrazenie tlačidla Skip
             self.isSessionActive = true  -- Nastavenie relácie ako aktívnej
             self.currentSession.startTime = GetTime()  -- Nastavenie času začiatku relácie
-            self:ShowFlashcard()
             self:UpdateSessionTimer()
         end
     end
@@ -364,6 +383,9 @@ function BindTrainer:EndSession()
     print(string.format("Počet preskočených: %d", self.currentSession.skips))
     print(string.format("Celkový počet flashcardov: %d", self.currentSession.totalFlashcards))
     print(string.format("Počet unikátnych flashcardov: %d", #self.currentSession.seenFlashcards))
+
+    -- Pridajte toto na koniec funkcie EndSession
+    self:DebugFlashcardDisplayCount()
 
     -- Save session to history
     table.insert(self.sessionHistory, {
@@ -561,6 +583,36 @@ end
 function BindTrainer:DebugFlashcards()
     print("Debug: Flashcards")
     print("Total flashcards: " .. #self.flashcards)
+    for i, card in ipairs(self.flashcards) do
+        print(string.format("%d. %s (Slot: %d, Type: %s, ID: %s, Bind: %s)", i, card.spell, card.slot, card.type, tostring(card.id), card.bind))
+    end
+end
+
+-- Pridajte túto novú funkciu na sledovanie zobrazení flashcardov
+function BindTrainer:TrackFlashcardDisplay(spell)
+    if not self.flashcardDisplayCount then
+        self.flashcardDisplayCount = {}
+    end
+    self.flashcardDisplayCount[spell] = (self.flashcardDisplayCount[spell] or 0) + 1
+end
+
+-- Pridajte túto novú funkciu na debugovanie počtu zobrazení flashcardov
+function BindTrainer:DebugFlashcardDisplayCount()
+    print("Debug: Počet zobrazení flashcardov")
+    for spell, count in pairs(self.flashcardDisplayCount) do
+        print(string.format("%s: %d", spell, count))
+    end
+    
+    print("Debug: Porovnanie s pôvodným zoznamom flashcardov")
+    for _, card in ipairs(self.flashcards) do
+        local displayCount = self.flashcardDisplayCount[card.spell] or 0
+        print(string.format("%s: Zobrazené %d krát", card.spell, displayCount))
+    end
+end
+
+-- Nová funkcia na výpis zoznamu kúziel
+function BindTrainer:PrintSpellList()
+    print("Zoznam kúziel pre túto reláciu:")
     for i, card in ipairs(self.flashcards) do
         print(string.format("%d. %s (Slot: %d, Type: %s, ID: %s)", i, card.spell, card.slot, card.type, tostring(card.id)))
     end
