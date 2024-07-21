@@ -94,11 +94,18 @@ local function GetRelevantBindings(actionType, id, name, slot)
     return bindings
 end
 
+-- Shuffle table
+local function ShuffleTable(t)
+    for i = #t, 2, -1 do
+        local j = math.random(i)
+        t[i], t[j] = t[j], t[i]
+    end
+end
 
 -- Populate flashcards with actions from action bars
 function BindTrainer:PopulateFlashcards()
     Debug("Starting to populate flashcards...")
-    wipe(self.flashcards)
+    local newFlashcards = {}
     local count = 0
 
     for i = 1, 120 do  -- Scanning all action buttons
@@ -115,27 +122,43 @@ function BindTrainer:PopulateFlashcards()
         
         Debug("Checking action slot %d: type=%s, id=%s, subType=%s, name=%s", i, tostring(actionType), tostring(id), tostring(subType), tostring(name))
         
-        if actionType and name then
+        if actionType and name and icon then
             local bindings = GetRelevantBindings(actionType, id, name, i)
             
             if #bindings > 0 then
-                -- Add only one flashcard per action, with all relevant bindings
                 local bindingString = table.concat(bindings, ", ")
-                table.insert(self.flashcards, {spell = name, bind = bindingString, icon = icon, id = id, type = actionType})
+                table.insert(newFlashcards, {spell = name, bind = bindingString, icon = icon, id = id, type = actionType})
                 count = count + 1
                 Debug("Added %s: %s, binds: %s, id: %s", actionType, name, bindingString, tostring(id))
             else
                 Debug("WARNING: No binding found for %s: %s, id: %s", actionType, tostring(name), tostring(id))
             end
         else
-            Debug("No action or name found in slot %d", i)
+            Debug("No valid action, name, or icon found in slot %d", i)
         end
     end
 
-    Debug("Total actions added: %d", count)
+    -- Shuffle flashcards
+    ShuffleTable(newFlashcards)
+
+    -- Replace old table with new
+    self.flashcards = newFlashcards
+    self.currentCard = 1  -- Reset to first card
+
+    Debug("Total actions added and shuffled: %d", count)
     
     if count == 0 then
         Debug("WARNING: No bound actions found on action bars. Please check your action bars and key bindings.")
+    end
+end
+
+-- Check flashcards integrity
+function BindTrainer:CheckFlashcardsIntegrity()
+    for i, card in ipairs(self.flashcards) do
+        if not card.spell or not card.type or not card.id or not card.icon then
+            Debug("Warning: Invalid flashcard found at index %d", i)
+            table.remove(self.flashcards, i)
+        end
     end
 end
 
@@ -147,7 +170,15 @@ function BindTrainer:ShowFlashcard()
     end
     
     local card = self.flashcards[self.currentCard]
+    if not card then
+        Debug("Error: Invalid card at index %d", self.currentCard)
+        return
+    end
+
     self.spellIcon:SetTexture(card.icon)
+    self.currentSpell = card.spell  -- Save current spell for later check
+    self.currentType = card.type    -- Save current type for later check
+    self.currentId = card.id        -- Save current ID for later check
     print(string.format("Use the keybind (%s) for: %s", card.bind, card.spell))
     self:Show()
 end
@@ -162,7 +193,7 @@ function BindTrainer:PlaySound(correct)
     end
 end
 
--- Ďalšia oprava funkcie ShakeIcon
+-- Shake Icon
 function BindTrainer:ShakeIcon()
     Debug("ShakeIcon called")
     local shakeTime, shakeX, shakeY = 0.5, 5, 5
@@ -195,16 +226,13 @@ end
 function BindTrainer:CheckAnswer(actionType, actionId)
     Debug("CheckAnswer called with actionType=%s, actionId=%s", tostring(actionType), tostring(actionId))
     
-    local card = self.flashcards[self.currentCard]
-    if not card then
-        Debug("Error: No card found at index %d", self.currentCard)
+    if not self.currentSpell or not self.currentType or not self.currentId then
+        Debug("Error: Current spell information is missing")
         return
     end
 
-    Debug("Current card: %s", tostring(card))
-
-    if card.type == actionType and card.id == actionId then
-        print(string.format("Correct! You used the right action: %s", card.spell or "Unknown"))
+    if self.currentType == actionType and self.currentId == actionId then
+        print(string.format("Correct! You used the right action: %s", self.currentSpell))
         if self.PlaySound then
             self:PlaySound(true)
         else
@@ -212,13 +240,10 @@ function BindTrainer:CheckAnswer(actionType, actionId)
         end
         self:NextFlashcard()
     else
-        local expectedAction = card.spell or "Unknown"
-        local gotAction = actionType or "Unknown"
-        local gotId = tostring(actionId) or "Unknown"
-        
-        print(string.format("Incorrect. Expected %s, but got %s with ID %s", expectedAction, gotAction, gotId))
+        print(string.format("Incorrect. Expected %s (%s), but got %s with ID %s", 
+            self.currentSpell, self.currentType, actionType or "Unknown", tostring(actionId) or "Unknown"))
         if self.PlaySound then
-            self:PlaySound(false)
+            self.PlaySound(false)
         else
             Debug("Warning: PlaySound method not found")
         end
@@ -232,8 +257,22 @@ end
 
 -- Next flashcard
 function BindTrainer:NextFlashcard()
-    self.currentCard = (self.currentCard % #self.flashcards) + 1
-    print(string.format("Moving to next flashcard. Current card: %d", self.currentCard))
+    self:CheckFlashcardsIntegrity()  -- Check integrity
+    if #self.flashcards == 0 then
+        print("|cFFFF0000BindTrainer Error:|r No valid flashcards remaining. Repopulating...")
+        self:PopulateFlashcards()
+    else
+        self.currentCard = (self.currentCard % #self.flashcards) + 1
+        print(string.format("Moving to next flashcard. Current card: %d", self.currentCard))
+        self:ShowFlashcard()
+    end
+end
+
+-- Restart training
+function BindTrainer:RestartTraining()
+    ShuffleTable(self.flashcards)
+    self.currentCard = 1
+    print("Training restarted with a new random order.")
     self:ShowFlashcard()
 end
 
@@ -242,7 +281,7 @@ BindTrainer:SetScript("OnEvent", function(self, event)
     Debug("Event triggered: %s", event)
     if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
         self:PopulateFlashcards()
-        print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end.", #self.flashcards))
+        print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
     end
 end)
 
@@ -265,4 +304,10 @@ SLASH_BINDTRAINEREND1 = "/btend"
 SlashCmdList["BINDTRAINEREND"] = function()
     BindTrainer:Hide()
     print("Bind training ended.")
+end
+
+-- Restart training
+SLASH_BINDTRAINERRESTART1 = "/btrestart"
+SlashCmdList["BINDTRAINERRESTART"] = function()
+    BindTrainer:RestartTraining()
 end
