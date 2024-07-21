@@ -362,6 +362,7 @@ function BindTrainer:EndSession()
         skips = self.currentSession.skips,  -- Add skip count to history
         totalFlashcards = self.currentSession.totalFlashcards  -- Add total flashcards count to history
     })
+    self:SaveSessionHistory()
     Debug("Added new session to history. Total sessions: " .. #self.sessionHistory)
 
     -- Ask user if they want to start a new session
@@ -455,22 +456,17 @@ end
 function BindTrainer:OnAddonLoaded(addonName)
     if addonName ~= "BindTrainer" then return end
     
-    if BindTrainerSavedVariables then
-        self.sessionHistory = BindTrainerSavedVariables.sessionHistory or {}
-        Debug("Loaded session history: " .. #self.sessionHistory)
-    else
-        BindTrainerSavedVariables = {sessionHistory = {}}
-        Debug("Created new session history")
-    end
+    self:InitializeSavedVariables()
+    Debug("Loaded session history: " .. #self.sessionHistory)
 end
 
 BindTrainer:RegisterEvent("ADDON_LOADED")
+BindTrainer:RegisterEvent("PLAYER_LOGOUT")
 BindTrainer:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
         self:OnAddonLoaded(...)
     elseif event == "PLAYER_LOGOUT" then
-        BindTrainerSavedVariables.sessionHistory = self.sessionHistory
-        Debug("Saved session history: " .. #self.sessionHistory)
+        self:SaveSessionHistory()
     else
         -- Existing logic for other events
         if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
@@ -519,3 +515,18 @@ BindTrainer.historyScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
 BindTrainer.historyContent = CreateFrame("Frame", nil, BindTrainer.historyScrollFrame)
 BindTrainer.historyContent:SetSize(330, 1) -- Height will be adjusted dynamically
 BindTrainer.historyScrollFrame:SetScrollChild(BindTrainer.historyContent)
+
+-- Funkcia na inicializáciu SavedVariables
+function BindTrainer:InitializeSavedVariables()
+    if not BindTrainerSavedVariables then
+        BindTrainerSavedVariables = {
+            sessionHistory = {}
+        }
+    end
+    self.sessionHistory = BindTrainerSavedVariables.sessionHistory
+end
+
+-- Funkcia na uloženie histórie do SavedVariables
+function BindTrainer:SaveSessionHistory()
+    BindTrainerSavedVariables.sessionHistory = self.sessionHistory
+end
