@@ -36,6 +36,40 @@ BindTrainer.skipButton:SetScript("OnClick", function()
     BindTrainer:NextFlashcard()
 end)
 
+-- Create frame for countdown
+BindTrainer.countdownFrame = CreateFrame("Frame", nil, UIParent)
+BindTrainer.countdownFrame:SetSize(200, 100)
+BindTrainer.countdownFrame:SetPoint("CENTER")
+BindTrainer.countdownFrame:Hide()
+
+BindTrainer.countdownText = BindTrainer.countdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+BindTrainer.countdownText:SetPoint("CENTER")
+BindTrainer.countdownText:SetText("")
+
+-- Create frame for history
+BindTrainer.historyFrame = CreateFrame("Frame", "BindTrainerHistoryFrame", UIParent, "BasicFrameTemplateWithInset")
+BindTrainer.historyFrame:SetSize(400, 300)
+BindTrainer.historyFrame:SetPoint("CENTER")
+BindTrainer.historyFrame:SetMovable(true)
+BindTrainer.historyFrame:EnableMouse(true)
+BindTrainer.historyFrame:RegisterForDrag("LeftButton")
+BindTrainer.historyFrame:SetScript("OnDragStart", BindTrainer.historyFrame.StartMoving)
+BindTrainer.historyFrame:SetScript("OnDragStop", BindTrainer.historyFrame.StopMovingOrSizing)
+BindTrainer.historyFrame:Hide()
+
+BindTrainer.historyFrame.title = BindTrainer.historyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+BindTrainer.historyFrame.title:SetPoint("TOPLEFT", 5, -5)
+BindTrainer.historyFrame.title:SetText("Session History")
+
+-- Create scrollframe for history
+BindTrainer.historyScrollFrame = CreateFrame("ScrollFrame", nil, BindTrainer.historyFrame, "UIPanelScrollFrameTemplate")
+BindTrainer.historyScrollFrame:SetPoint("TOPLEFT", 10, -30)
+BindTrainer.historyScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
+
+BindTrainer.historyContent = CreateFrame("Frame", nil, BindTrainer.historyScrollFrame)
+BindTrainer.historyContent:SetSize(330, 1) -- Height will be adjusted dynamically
+BindTrainer.historyScrollFrame:SetScrollChild(BindTrainer.historyContent)
+
 -- Globálna debug funkcia
 local function Debug(message)
     if BindTrainer.debugMode then
@@ -443,6 +477,19 @@ SlashCmdList["BINDTRAINERHISTORY"] = function()
     BindTrainer:ShowSessionHistory()
 end
 
+SLASH_BINDTRAINERRESTART1 = "/btrestart"
+SlashCmdList["BINDTRAINERRESTART"] = function()
+    BindTrainer:RestartTraining()
+end
+
+BindTrainer.debugMode = false
+
+SLASH_BINDTRAINERDEBUG1 = "/btdebug"
+SlashCmdList["BINDTRAINERDEBUG"] = function()
+    BindTrainer.debugMode = not BindTrainer.debugMode
+    print("BindTrainer debug mode: " .. (BindTrainer.debugMode and "ON" or "OFF"))
+end
+
 -- Addon loaded event
 function BindTrainer:OnAddonLoaded(addonName)
     if addonName ~= "BindTrainer" then return end
@@ -467,46 +514,6 @@ BindTrainer:SetScript("OnEvent", function(self, event, ...)
     end
 end)
 
--- Restart training
-SLASH_BINDTRAINERRESTART1 = "/btrestart"
-SlashCmdList["BINDTRAINERRESTART"] = function()
-    BindTrainer:RestartTraining()
-end
-
--- Create frame for countdown
-BindTrainer.countdownFrame = CreateFrame("Frame", nil, UIParent)
-BindTrainer.countdownFrame:SetSize(200, 100)
-BindTrainer.countdownFrame:SetPoint("CENTER")
-BindTrainer.countdownFrame:Hide()
-
-BindTrainer.countdownText = BindTrainer.countdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-BindTrainer.countdownText:SetPoint("CENTER")
-BindTrainer.countdownText:SetText("")
-
--- Create frame for history
-BindTrainer.historyFrame = CreateFrame("Frame", "BindTrainerHistoryFrame", UIParent, "BasicFrameTemplateWithInset")
-BindTrainer.historyFrame:SetSize(400, 300)
-BindTrainer.historyFrame:SetPoint("CENTER")
-BindTrainer.historyFrame:SetMovable(true)
-BindTrainer.historyFrame:EnableMouse(true)
-BindTrainer.historyFrame:RegisterForDrag("LeftButton")
-BindTrainer.historyFrame:SetScript("OnDragStart", BindTrainer.historyFrame.StartMoving)
-BindTrainer.historyFrame:SetScript("OnDragStop", BindTrainer.historyFrame.StopMovingOrSizing)
-BindTrainer.historyFrame:Hide()
-
-BindTrainer.historyFrame.title = BindTrainer.historyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-BindTrainer.historyFrame.title:SetPoint("TOPLEFT", 5, -5)
-BindTrainer.historyFrame.title:SetText("Session History")
-
--- Create scrollframe for history
-BindTrainer.historyScrollFrame = CreateFrame("ScrollFrame", nil, BindTrainer.historyFrame, "UIPanelScrollFrameTemplate")
-BindTrainer.historyScrollFrame:SetPoint("TOPLEFT", 10, -30)
-BindTrainer.historyScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
-
-BindTrainer.historyContent = CreateFrame("Frame", nil, BindTrainer.historyScrollFrame)
-BindTrainer.historyContent:SetSize(330, 1) -- Height will be adjusted dynamically
-BindTrainer.historyScrollFrame:SetScrollChild(BindTrainer.historyContent)
-
 -- Funkcia na inicializáciu SavedVariables
 function BindTrainer:InitializeSavedVariables()
     if not BindTrainerSavedVariables then
@@ -520,15 +527,6 @@ end
 -- Funkcia na uloženie histórie do SavedVariables
 function BindTrainer:SaveSessionHistory()
     BindTrainerSavedVariables.sessionHistory = self.sessionHistory
-end
-
--- Debug mode
-BindTrainer.debugMode = false
-
-SLASH_BINDTRAINERDEBUG1 = "/btdebug"
-SlashCmdList["BINDTRAINERDEBUG"] = function()
-    BindTrainer.debugMode = not BindTrainer.debugMode
-    print("BindTrainer debug mode: " .. (BindTrainer.debugMode and "ON" or "OFF"))
 end
 
 -- Pridajte túto novú funkciu na sledovanie zobrazení flashcardov
