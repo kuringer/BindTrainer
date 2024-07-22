@@ -2,82 +2,26 @@ local BindTrainer = CreateFrame("Frame", "BindTrainerFrame", UIParent)
 BindTrainer:RegisterEvent("PLAYER_LOGIN")
 BindTrainer:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 BindTrainer:RegisterEvent("UPDATE_BINDINGS")
+BindTrainer:RegisterEvent("ADDON_LOADED")
+BindTrainer:RegisterEvent("PLAYER_LOGOUT")
 
-BindTrainer.flashcards = {}
-BindTrainer.currentCard = 1
-
--- New variables for sessions
-BindTrainer.currentSession = nil
-BindTrainer.sessionHistory = {}
-
--- Create main frame
-BindTrainer:SetSize(100, 100)
-BindTrainer:SetPoint("CENTER")
-BindTrainer:SetMovable(true)
-BindTrainer:EnableMouse(true)
-BindTrainer:RegisterForDrag("LeftButton")
-BindTrainer:SetScript("OnDragStart", BindTrainer.StartMoving)
-BindTrainer:SetScript("OnDragStop", BindTrainer.StopMovingOrSizing)
-BindTrainer:Hide()
-
--- Create spell icon
-BindTrainer.spellIcon = BindTrainer:CreateTexture(nil, "ARTWORK")
-BindTrainer.spellIcon:SetAllPoints()
-
--- Create skip button
-BindTrainer.skipButton = CreateFrame("Button", nil, BindTrainer, "UIPanelButtonTemplate")
-BindTrainer.skipButton:SetSize(60, 25)
-BindTrainer.skipButton:SetPoint("BOTTOM", BindTrainer, "BOTTOM", 0, -30)
-BindTrainer.skipButton:SetText("Skip")
-BindTrainer.skipButton:SetScript("OnClick", function()
-    if BindTrainer.currentSession then
-        BindTrainer.currentSession.skips = BindTrainer.currentSession.skips + 1
-    end
-    BindTrainer:NextFlashcard()
-end)
-
--- Create frame for countdown
-BindTrainer.countdownFrame = CreateFrame("Frame", nil, UIParent)
-BindTrainer.countdownFrame:SetSize(200, 100)
-BindTrainer.countdownFrame:SetPoint("CENTER")
-BindTrainer.countdownFrame:Hide()
-
-BindTrainer.countdownText = BindTrainer.countdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-BindTrainer.countdownText:SetPoint("CENTER")
-BindTrainer.countdownText:SetText("")
-
--- Create frame for history
-BindTrainer.historyFrame = CreateFrame("Frame", "BindTrainerHistoryFrame", UIParent, "BasicFrameTemplateWithInset")
-BindTrainer.historyFrame:SetSize(400, 300)
-BindTrainer.historyFrame:SetPoint("CENTER")
-BindTrainer.historyFrame:SetMovable(true)
-BindTrainer.historyFrame:EnableMouse(true)
-BindTrainer.historyFrame:RegisterForDrag("LeftButton")
-BindTrainer.historyFrame:SetScript("OnDragStart", BindTrainer.historyFrame.StartMoving)
-BindTrainer.historyFrame:SetScript("OnDragStop", BindTrainer.historyFrame.StopMovingOrSizing)
-BindTrainer.historyFrame:Hide()
-
-BindTrainer.historyFrame.title = BindTrainer.historyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-BindTrainer.historyFrame.title:SetPoint("TOPLEFT", 5, -5)
-BindTrainer.historyFrame.title:SetText("Session History")
-
--- Create scrollframe for history
-BindTrainer.historyScrollFrame = CreateFrame("ScrollFrame", nil, BindTrainer.historyFrame, "UIPanelScrollFrameTemplate")
-BindTrainer.historyScrollFrame:SetPoint("TOPLEFT", 10, -30)
-BindTrainer.historyScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
-
-BindTrainer.historyContent = CreateFrame("Frame", nil, BindTrainer.historyScrollFrame)
-BindTrainer.historyContent:SetSize(330, 1) -- Height will be adjusted dynamically
-BindTrainer.historyScrollFrame:SetScrollChild(BindTrainer.historyContent)
-
--- Globálna debug funkcia
+-- HELPER FUNCTIONS
+-- 1. Debug
 local function Debug(message)
     if BindTrainer.debugMode then
         print("|cFF00FF00BindTrainer Debug:|r " .. message)
     end
 end
 
--- Function to get relevant bindings for an action
+-- 2. Shuffle table
+local function ShuffleTable(t)
+    for i = #t, 2, -1 do
+        local j = math.random(i)
+        t[i], t[j] = t[j], t[i]
+    end
+end
+
+-- 3. Get relevant bindings for an action
 local function GetRelevantBindings(actionType, id, name, slot)
     local bindings = {}
     local actionBarBindings = {
@@ -127,15 +71,108 @@ local function GetRelevantBindings(actionType, id, name, slot)
     return bindings
 end
 
--- Shuffle table
-local function ShuffleTable(t)
-    for i = #t, 2, -1 do
-        local j = math.random(i)
-        t[i], t[j] = t[j], t[i]
+-- Initialize
+BindTrainer:SetScript("OnEvent", function(self, event)
+    Debug("Event triggered: %s", event)
+    if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
+        self:PopulateFlashcards()
+        print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
     end
+end)
+
+-- Addon loaded event
+function BindTrainer:OnAddonLoaded(addonName)
+    if addonName ~= "BindTrainer" then return end
+    
+    self:InitializeSavedVariables()
+    Debug("Loaded session history: " .. #self.sessionHistory)
 end
 
--- Upravená funkcia PopulateFlashcards
+
+BindTrainer:SetScript("OnEvent", function(self, event, ...)
+    if event == "ADDON_LOADED" then
+        self:OnAddonLoaded(...)
+    elseif event == "PLAYER_LOGOUT" then
+        self:SaveSessionHistory()
+    else
+        -- Existing logic for other events
+        if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
+            self:PopulateFlashcards()
+            print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
+        end
+    end
+end)
+
+-- GLOBAL VARIABLES
+BindTrainer.flashcards = {}
+BindTrainer.currentCard = 1
+BindTrainer.currentSession = nil
+BindTrainer.sessionHistory = {}
+
+
+-- UI COMPONENTS
+-- 1. Create main frame
+BindTrainer:SetSize(100, 100)
+BindTrainer:SetPoint("CENTER")
+BindTrainer:SetMovable(true)
+BindTrainer:EnableMouse(true)
+BindTrainer:RegisterForDrag("LeftButton")
+BindTrainer:SetScript("OnDragStart", BindTrainer.StartMoving)
+BindTrainer:SetScript("OnDragStop", BindTrainer.StopMovingOrSizing)
+BindTrainer:Hide()
+
+-- 2. Create spell icon
+BindTrainer.spellIcon = BindTrainer:CreateTexture(nil, "ARTWORK")
+BindTrainer.spellIcon:SetAllPoints()
+
+-- 3. Create skip button
+BindTrainer.skipButton = CreateFrame("Button", nil, BindTrainer, "UIPanelButtonTemplate")
+BindTrainer.skipButton:SetSize(60, 25)
+BindTrainer.skipButton:SetPoint("BOTTOM", BindTrainer, "BOTTOM", 0, -30)
+BindTrainer.skipButton:SetText("Skip")
+BindTrainer.skipButton:SetScript("OnClick", function()
+    if BindTrainer.currentSession then
+        BindTrainer.currentSession.skips = BindTrainer.currentSession.skips + 1
+    end
+    BindTrainer:NextFlashcard()
+end)
+
+-- 4. Create frame for countdown
+BindTrainer.countdownFrame = CreateFrame("Frame", nil, UIParent)
+BindTrainer.countdownFrame:SetSize(200, 100)
+BindTrainer.countdownFrame:SetPoint("CENTER")
+BindTrainer.countdownFrame:Hide()
+
+BindTrainer.countdownText = BindTrainer.countdownFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+BindTrainer.countdownText:SetPoint("CENTER")
+BindTrainer.countdownText:SetText("")
+
+-- 5. Create frame for history
+BindTrainer.historyFrame = CreateFrame("Frame", "BindTrainerHistoryFrame", UIParent, "BasicFrameTemplateWithInset")
+BindTrainer.historyFrame:SetSize(400, 300)
+BindTrainer.historyFrame:SetPoint("CENTER")
+BindTrainer.historyFrame:SetMovable(true)
+BindTrainer.historyFrame:EnableMouse(true)
+BindTrainer.historyFrame:RegisterForDrag("LeftButton")
+BindTrainer.historyFrame:SetScript("OnDragStart", BindTrainer.historyFrame.StartMoving)
+BindTrainer.historyFrame:SetScript("OnDragStop", BindTrainer.historyFrame.StopMovingOrSizing)
+BindTrainer.historyFrame:Hide()
+
+BindTrainer.historyFrame.title = BindTrainer.historyFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+BindTrainer.historyFrame.title:SetPoint("TOPLEFT", 5, -5)
+BindTrainer.historyFrame.title:SetText("Session History")
+
+-- 6. Create scrollframe for history
+BindTrainer.historyScrollFrame = CreateFrame("ScrollFrame", nil, BindTrainer.historyFrame, "UIPanelScrollFrameTemplate")
+BindTrainer.historyScrollFrame:SetPoint("TOPLEFT", 10, -30)
+BindTrainer.historyScrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
+
+BindTrainer.historyContent = CreateFrame("Frame", nil, BindTrainer.historyScrollFrame)
+BindTrainer.historyContent:SetSize(330, 1) -- Height will be adjusted dynamically
+BindTrainer.historyScrollFrame:SetScrollChild(BindTrainer.historyContent)
+
+-- MAIN FUNCTIONS
+-- 1. Populate flashcards
 function BindTrainer:PopulateFlashcards()
     local newFlashcards = {}
     local seenSpells = {}
@@ -173,7 +210,7 @@ function BindTrainer:PopulateFlashcards()
     print(string.format("Celkový počet unikátnych akcií pridaných: %d", count))
 end
 
--- Check flashcards integrity
+-- 2. Check flashcards integrity
 function BindTrainer:CheckFlashcardsIntegrity()
     for i, card in ipairs(self.flashcards) do
         if not card.spell or not card.type or not card.id or not card.icon then
@@ -183,7 +220,7 @@ function BindTrainer:CheckFlashcardsIntegrity()
     end
 end
 
--- Show flashcard
+-- 3. Show flashcard
 function BindTrainer:ShowFlashcard()
     if #self.flashcards == 0 then 
         print("|cFFFF0000BindTrainer Error:|r No bound actions found. Please check your action bars and key bindings.")
@@ -206,7 +243,7 @@ function BindTrainer:ShowFlashcard()
     self:Show()
 end
 
--- Play sound function
+-- 4. Play sound function
 function BindTrainer:PlaySound(correct)
     Debug("PlaySound called with correct=%s", tostring(correct))
     if correct then
@@ -216,7 +253,7 @@ function BindTrainer:PlaySound(correct)
     end
 end
 
--- Shake Icon
+-- 5. Shake Icon
 function BindTrainer:ShakeIcon()
     Debug("ShakeIcon called")
     local shakeTime, shakeX, shakeY = 0.5, 5, 5
@@ -245,7 +282,7 @@ function BindTrainer:ShakeIcon()
     DoShake(1)
 end
 
--- Upravená funkcia CheckAnswer
+-- 6. Check answer
 function BindTrainer:CheckAnswer(actionType, actionId)
     if not self.isSessionActive or not self.currentSession then return end
 
@@ -269,7 +306,7 @@ function BindTrainer:CheckAnswer(actionType, actionId)
     end
 end
 
--- Upravená funkcia NextFlashcard
+-- 7. Next flashcard
 function BindTrainer:NextFlashcard()
     self:CheckFlashcardsIntegrity()
     if #self.flashcards == 0 then
@@ -320,7 +357,8 @@ function BindTrainer:NextFlashcard()
     self:ShowFlashcard()
 end
 
--- Restart training
+-- SESSION FUNCTIONS
+-- 8. Restart training
 function BindTrainer:RestartTraining()
     ShuffleTable(self.flashcards)
     self.currentCard = 1
@@ -328,7 +366,7 @@ function BindTrainer:RestartTraining()
     self:ShowFlashcard()
 end
 
--- New function to start a session
+-- 9. Start session
 function BindTrainer:StartSession()
     if self.currentSession then
         print("Relácia už beží.")
@@ -381,7 +419,7 @@ function BindTrainer:StartSession()
     DoCountdown()
 end
 
--- New function to end a session
+-- 10. End session
 function BindTrainer:EndSession()
     if not self.currentSession then
         print("Žiadna aktívna relácia.")
@@ -410,7 +448,7 @@ function BindTrainer:EndSession()
     self.currentSession = nil
 end
 
--- New function to update session timer
+-- 11. Update session timer
 function BindTrainer:UpdateSessionTimer()
     if not self.currentSession then return end
 
@@ -420,7 +458,7 @@ function BindTrainer:UpdateSessionTimer()
     C_Timer.After(1, function() self:UpdateSessionTimer() end)
 end
 
--- New function to show session history
+-- 12. Show session history
 function BindTrainer:ShowSessionHistory()
     Debug("Showing session history. Number of records: " .. #self.sessionHistory)
     BindTrainer.historyFrame:Show()
@@ -443,15 +481,45 @@ function BindTrainer:ShowSessionHistory()
     BindTrainer.historyContent:SetHeight(yOffset)
 end
 
--- Initialize
-BindTrainer:SetScript("OnEvent", function(self, event)
-    Debug("Event triggered: %s", event)
-    if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
-        self:PopulateFlashcards()
-        print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
+-- SESSION SAVING
+-- 13. Initialize saved variables
+function BindTrainer:InitializeSavedVariables()
+    if not BindTrainerSavedVariables then
+        BindTrainerSavedVariables = {
+            sessionHistory = {}
+        }
     end
-end)
+    self.sessionHistory = BindTrainerSavedVariables.sessionHistory
+end
 
+-- 14. Save session history
+function BindTrainer:SaveSessionHistory()
+    BindTrainerSavedVariables.sessionHistory = self.sessionHistory
+end
+
+-- 15. Track flashcard display
+function BindTrainer:TrackFlashcardDisplay(spell)
+    if not self.flashcardDisplayCount then
+        self.flashcardDisplayCount = {}
+    end
+    self.flashcardDisplayCount[spell] = (self.flashcardDisplayCount[spell] or 0) + 1
+end
+
+-- 16. Save session to history
+function BindTrainer:SaveSessionToHistory()
+    local session = self.currentSession
+    table.insert(self.sessionHistory, {
+        date = date("%Y-%m-%d %H:%M:%S"),
+        duration = session.endTime - session.startTime,
+        mistakes = session.mistakes,
+        apm = session.totalActions / ((session.endTime - session.startTime) / 60),
+        skips = session.skips,
+        totalFlashcards = session.totalFlashcards
+    })
+    Debug("Relácia uložená do histórie. Celkový počet relácií: " .. #self.sessionHistory)
+end
+
+-- HOOKS AND OVERRIDES
 -- Hook spell cast
 hooksecurefunc("UseAction", function(slot, checkCursor, onSelf)
     if not BindTrainer.isSessionActive then return end  -- If session is not active, do nothing
@@ -461,7 +529,7 @@ hooksecurefunc("UseAction", function(slot, checkCursor, onSelf)
     BindTrainer:CheckAnswer(actionType, id)
 end)
 
--- Slash commands
+-- SLASH COMMANDS
 SLASH_BINDTRAINER1 = "/bt"
 SlashCmdList["BINDTRAINER"] = function()
     BindTrainer:StartSession()
@@ -490,63 +558,5 @@ SlashCmdList["BINDTRAINERDEBUG"] = function()
     print("BindTrainer debug mode: " .. (BindTrainer.debugMode and "ON" or "OFF"))
 end
 
--- Addon loaded event
-function BindTrainer:OnAddonLoaded(addonName)
-    if addonName ~= "BindTrainer" then return end
-    
-    self:InitializeSavedVariables()
-    Debug("Loaded session history: " .. #self.sessionHistory)
-end
 
-BindTrainer:RegisterEvent("ADDON_LOADED")
-BindTrainer:RegisterEvent("PLAYER_LOGOUT")
-BindTrainer:SetScript("OnEvent", function(self, event, ...)
-    if event == "ADDON_LOADED" then
-        self:OnAddonLoaded(...)
-    elseif event == "PLAYER_LOGOUT" then
-        self:SaveSessionHistory()
-    else
-        -- Existing logic for other events
-        if event == "PLAYER_LOGIN" or event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_BINDINGS" then
-            self:PopulateFlashcards()
-            print(string.format("BindTrainer loaded with %d flashcards. Type /bt to start training, /btend to end, /btrestart to shuffle and restart.", #self.flashcards))
-        end
-    end
-end)
 
--- Funkcia na inicializáciu SavedVariables
-function BindTrainer:InitializeSavedVariables()
-    if not BindTrainerSavedVariables then
-        BindTrainerSavedVariables = {
-            sessionHistory = {}
-        }
-    end
-    self.sessionHistory = BindTrainerSavedVariables.sessionHistory
-end
-
--- Funkcia na uloženie histórie do SavedVariables
-function BindTrainer:SaveSessionHistory()
-    BindTrainerSavedVariables.sessionHistory = self.sessionHistory
-end
-
--- Pridajte túto novú funkciu na sledovanie zobrazení flashcardov
-function BindTrainer:TrackFlashcardDisplay(spell)
-    if not self.flashcardDisplayCount then
-        self.flashcardDisplayCount = {}
-    end
-    self.flashcardDisplayCount[spell] = (self.flashcardDisplayCount[spell] or 0) + 1
-end
-
--- Funkcia na uloženie relácie do histórie
-function BindTrainer:SaveSessionToHistory()
-    local session = self.currentSession
-    table.insert(self.sessionHistory, {
-        date = date("%Y-%m-%d %H:%M:%S"),
-        duration = session.endTime - session.startTime,
-        mistakes = session.mistakes,
-        apm = session.totalActions / ((session.endTime - session.startTime) / 60),
-        skips = session.skips,
-        totalFlashcards = session.totalFlashcards
-    })
-    Debug("Relácia uložená do histórie. Celkový počet relácií: " .. #self.sessionHistory)
-end
