@@ -1,0 +1,7 @@
+## Interface: 100005
+## Title: BindScanner
+## Notes: Scan and display all keybindings
+## Author: YourName
+## Version: 1.0
+
+BindScanner.lua
