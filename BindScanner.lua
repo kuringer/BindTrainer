@@ -48,14 +48,50 @@ end
 function BindScanner:DisplayBindings()
     local bindings = self:ScanBindings()
     
-    print("Všetky nájdené bindy:")
-    for command, bindInfo in pairs(bindings) do
-        print(string.format("%s: %s %s (Kategória: %s)", 
-            command, 
-            bindInfo.key1 or "N/A", 
-            bindInfo.key2 or "", 
-            bindInfo.category or bindInfo.actionType or "N/A"))
+    print("|cFF00FF00=== Bindy pre Action Bary, Stance Bar a Pet Bar ===|r")
+    
+    local relevantPrefixes = {
+        "ACTIONBUTTON",
+        "MULTIACTIONBAR1BUTTON",
+        "MULTIACTIONBAR2BUTTON",
+        "MULTIACTIONBAR3BUTTON",
+        "MULTIACTIONBAR4BUTTON",
+        "EXTRAACTIONBUTTON",
+        "SHAPESHIFTBUTTON",  -- Pre stance bar
+        "BONUSACTIONBUTTON"  -- Pre pet bar
+    }
+    
+    local function isRelevantBinding(command)
+        for _, prefix in ipairs(relevantPrefixes) do
+            if command:find(prefix) then
+                return true
+            end
+        end
+        return false
     end
+    
+    local sortedBindings = {}
+    for command, bindInfo in pairs(bindings) do
+        if isRelevantBinding(command) then
+            table.insert(sortedBindings, {command = command, info = bindInfo})
+        end
+    end
+    
+    table.sort(sortedBindings, function(a, b) return a.command < b.command end)
+    
+    for _, binding in ipairs(sortedBindings) do
+        local command = binding.command
+        local bindInfo = binding.info
+        local keyString = (bindInfo.key1 or "N/A") .. (bindInfo.key2 and (", " .. bindInfo.key2) or "")
+        local categoryString = bindInfo.category or bindInfo.actionType or "N/A"
+        
+        print(string.format("|cFFFFFF00%s|r: |cFF00FFFF%s|r |cFF888888(Kategória: %s)|r", 
+            command, 
+            keyString,
+            categoryString))
+    end
+    
+    print(string.format("|cFF00FF00Celkový počet zobrazených bindov: %d|r", #sortedBindings))
 end
 
 BindScanner:SetScript("OnEvent", function(self, event)

@@ -6,3 +6,4 @@
 ## SavedVariables: BindTrainerSavedVariables
 
 BindTrainer.lua
+BindScanner.lua
