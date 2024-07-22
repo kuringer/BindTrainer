@@ -294,15 +294,27 @@ function BindTrainer:CheckAnswer(actionType, actionId)
     self.currentSession.totalActions = self.currentSession.totalActions + 1
 
     if self.currentType == actionType and self.currentId == actionId then
-        print(string.format("Correct! You used the right action: %s", self.currentSpell))
+        print(string.format("Správne! Použili ste správnu akciu: %s", self.currentSpell))
         self:PlaySound(true)
         self:NextFlashcard()
     else
-        print(string.format("Incorrect. Expected %s (%s), but got %s with ID %s", 
-            self.currentSpell, self.currentType, actionType or "Unknown", tostring(actionId) or "Unknown"))
+        print(string.format("Nesprávne. Očakávalo sa %s (%s), ale dostali sme %s s ID %s", 
+            self.currentSpell, self.currentType, actionType or "Neznáme", tostring(actionId) or "Neznáme"))
         self:PlaySound(false)
         self:ShakeIcon()
-        self.currentSession.mistakes = self.currentSession.mistakes + 1
+        
+        -- Kontrola, či už bola zaznamenaná chyba pre túto flashcard
+        if not self.currentSession.mistakesMade then
+            self.currentSession.mistakesMade = {}
+        end
+        
+        if not self.currentSession.mistakesMade[self.currentSpell] then
+            self.currentSession.mistakes = self.currentSession.mistakes + 1
+            self.currentSession.mistakesMade[self.currentSpell] = true
+            Debug(string.format("Zaznamenaná nová chyba pre %s", self.currentSpell))
+        else
+            Debug(string.format("Chyba pre %s už bola predtým zaznamenaná", self.currentSpell))
+        end
     end
 end
 
@@ -385,6 +397,7 @@ function BindTrainer:StartSession()
         totalFlashcards = #self.flashcards,
         seenFlashcards = {},
         unseenFlashcards = {},
+        mistakesMade = {},  -- Pridané nové pole
     }
 
     for i = 1, #self.flashcards do
