@@ -1,97 +1,107 @@
 local BindScanner = CreateFrame("Frame")
 BindScanner:RegisterEvent("PLAYER_LOGIN")
 
-function BindScanner:ScanBindings()
+-- Funkcia na získanie relevantných bindov
+local function GetRelevantBindings(actionType, id, name, slot)
     local bindings = {}
+    local actionBarBindings = {
+        "ACTIONBUTTON", "MULTIACTIONBAR1BUTTON", "MULTIACTIONBAR2BUTTON",
+        "MULTIACTIONBAR3BUTTON", "MULTIACTIONBAR4BUTTON", "EXTRAACTIONBUTTON"
+    }
 
-    -- Skenuj všetky možné bindy
-    for i = 1, GetNumBindings() do
-        local command, category, key1, key2 = GetBinding(i)
-        if key1 or key2 then
-            bindings[command] = {key1 = key1, key2 = key2, category = category}
+    -- Check action bar bindings
+    for _, bindingType in ipairs(actionBarBindings) do
+        local binding = bindingType .. ((slot - 1) % 12 + 1)
+        local key = GetBindingKey(binding)
+        if key then
+            table.insert(bindings, key)
         end
     end
 
-    -- Skenuj action bary
-    for i = 1, 120 do
-        local actionType, id, subType = GetActionInfo(i)
-        if actionType then
-            local bindingName = "ACTIONBUTTON" .. ((i - 1) % 12 + 1)
-            local key1, key2 = GetBindingKey(bindingName)
-            if key1 or key2 then
-                bindings[bindingName] = {key1 = key1, key2 = key2, actionType = actionType, id = id, subType = subType}
+    -- Check for direct spell bindings
+    if actionType == "spell" and name then
+        local spellBinding = "SPELL " .. name:upper()
+        local key = GetBindingKey(spellBinding)
+        if key then
+            table.insert(bindings, key)
+        end
+    end
+
+    -- Check for item bindings
+    if actionType == "item" and id then
+        local itemBinding = "ITEM " .. id
+        local key = GetBindingKey(itemBinding)
+        if key then
+            table.insert(bindings, key)
+        end
+    end
+
+    -- Check for macro bindings
+    if actionType == "macro" and name then
+        local macroIndex = GetMacroIndexByName(name)
+        if macroIndex > 0 then
+            local macroBinding = "MACRO " .. macroIndex
+            local key = GetBindingKey(macroBinding)
+            if key then
+                table.insert(bindings, key)
             end
-        end
-    end
-
-    -- Skenuj stance bar
-    for i = 1, GetNumShapeshiftForms() do
-        local bindingName = "SHAPESHIFTBUTTON" .. i
-        local key1, key2 = GetBindingKey(bindingName)
-        if key1 or key2 then
-            bindings[bindingName] = {key1 = key1, key2 = key2, category = "STANCE"}
-        end
-    end
-
-    -- Skenuj pet bar
-    for i = 1, 10 do
-        local bindingName = "BONUSACTIONBUTTON" .. i
-        local key1, key2 = GetBindingKey(bindingName)
-        if key1 or key2 then
-            bindings[bindingName] = {key1 = key1, key2 = key2, category = "PET"}
         end
     end
 
     return bindings
 end
 
+function BindScanner:ScanBindings()
+    local newFlashcards = {}
+    local seenSpells = {}
+    local count = 0
+
+    for i = 1, 180 do
+        local actionType, id, subType = GetActionInfo(i)
+        local name, icon
+        
+        if actionType == "spell" then
+            name, _, icon = GetSpellInfo(id)
+        elseif actionType == "item" then
+            name, _, _, _, _, _, _, _, _, icon = GetItemInfo(id)
+        elseif actionType == "macro" then
+            name, icon = GetMacroInfo(id)
+        end
+        
+        if actionType and name and icon then
+            local bindings = GetRelevantBindings(actionType, id, name, i)
+            
+            if #bindings > 0 then
+                if not seenSpells[name] then
+                    table.insert(newFlashcards, {spell = name, bind = table.concat(bindings, ", "), icon = icon, id = id, type = actionType, slot = i})
+                    seenSpells[name] = i
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    print(string.format("Celkový počet unikátnych akcií pridaných: %d", count))
+    return newFlashcards
+end
+
 function BindScanner:DisplayBindings()
     local bindings = self:ScanBindings()
     
-    print("|cFF00FF00=== Bindy pre Action Bary, Stance Bar a Pet Bar ===|r")
+    print("|cFF00FF00=== Bindy pre Action Bary ===|r")
     
-    local relevantPrefixes = {
-        "ACTIONBUTTON",
-        "MULTIACTIONBAR1BUTTON",
-        "MULTIACTIONBAR2BUTTON",
-        "MULTIACTIONBAR3BUTTON",
-        "MULTIACTIONBAR4BUTTON",
-        "EXTRAACTIONBUTTON",
-        "SHAPESHIFTBUTTON",  -- Pre stance bar
-        "BONUSACTIONBUTTON"  -- Pre pet bar
-    }
+    table.sort(bindings, function(a, b) return a.spell < b.spell end)
     
-    local function isRelevantBinding(command)
-        for _, prefix in ipairs(relevantPrefixes) do
-            if command:find(prefix) then
-                return true
-            end
-        end
-        return false
+    for _, binding in ipairs(bindings) do
+        print(string.format("|T%s:0|t |cFFFFFF00%s|r: |cFF00FFFF%s|r |cFF888888(Typ: %s, Slot: %d)|r", 
+            binding.icon,
+            binding.spell, 
+            binding.bind,
+            binding.type,
+            binding.slot))
     end
     
-    local sortedBindings = {}
-    for command, bindInfo in pairs(bindings) do
-        if isRelevantBinding(command) then
-            table.insert(sortedBindings, {command = command, info = bindInfo})
-        end
-    end
-    
-    table.sort(sortedBindings, function(a, b) return a.command < b.command end)
-    
-    for _, binding in ipairs(sortedBindings) do
-        local command = binding.command
-        local bindInfo = binding.info
-        local keyString = (bindInfo.key1 or "N/A") .. (bindInfo.key2 and (", " .. bindInfo.key2) or "")
-        local categoryString = bindInfo.category or bindInfo.actionType or "N/A"
-        
-        print(string.format("|cFFFFFF00%s|r: |cFF00FFFF%s|r |cFF888888(Kategória: %s)|r", 
-            command, 
-            keyString,
-            categoryString))
-    end
-    
-    print(string.format("|cFF00FF00Celkový počet zobrazených bindov: %d|r", #sortedBindings))
+    print(string.format("|cFF00FF00Celkový počet zobrazených bindov: %d|r", #bindings))
 end
 
 BindScanner:SetScript("OnEvent", function(self, event)
